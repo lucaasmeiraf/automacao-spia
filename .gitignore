@@ -1,0 +1,25 @@
+# ===== Segredos =====
+.env
+*.env
+!.env.example
+
+# ===== Arquivos n8n (contêm credenciais hardcoded) =====
+Supra AI - n8n.json
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== Ambiente / IDE =====
+.vscode/
+.idea/
+*.log
+
+# ===== uv =====
+.uv/
