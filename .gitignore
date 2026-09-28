@@ -23,3 +23,6 @@ venv/
 
 # ===== uv =====
 .uv/
+
+# Documentação do SUPRA com a encryption_key (assina todos os JWT) — nunca versionar
+Endpoint_AI_relatorio_contexto.docx

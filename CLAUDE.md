@@ -104,6 +104,13 @@ Não existem `src/`, `BaseProcessor` nem `tests/processors/` — não os crie.
 O parâmetro da query da API SUPRA é `periodo_incio` (sem "í"). **Não corrija**. É o parâmetro real da API.
 Está em `app/clients/dnit.py`.
 
+### Cliente SUPRA
+
+`DnitClient` limita requisições simultâneas e repete 502/503/504 (a SUPRA derruba rajadas de chamadas).
+Não remova isso; toda chamada nova à SUPRA deve passar por `_get_json`. O documento
+`Endpoint_AI_relatorio_contexto.docx` contém a `encryption_key` da SUPRA: está no `.gitignore` — nunca
+o versione nem copie a chave para código, docs ou logs.
+
 ---
 
 ## Toggle de Tópicos
@@ -157,8 +164,8 @@ python -m py_compile app/clients/<arquivo>.py
 ```bash
 pytest tests/ -v
 ```
-Estado atual: 263 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
-segurança, auth, settings, API de configuração, dry-run, buffer de logs, tela). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
+Estado atual: 277 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
+segurança, auth, settings, API de configuração, dry-run, buffer de logs, tela, cliente SUPRA). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
 hermético e `create_app` sem lifespan). Toda mudança de segurança precisa de teste do caso NEGATIVO
 (sem chave, sem sessão, sem CSRF, senha errada, fora de `dev`). Todo handler novo deve ter testes com
 **clients mockados** (`AsyncMock`/`MagicMock`; nunca chamar API real) cobrindo:

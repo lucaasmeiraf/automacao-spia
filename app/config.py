@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     dnit_base_url: str = (
         "https://supra.dnit.gov.br/index_cgcont_common.php/cgcont/ai"
     )
+    # Proteção do servidor da SUPRA: muitas chamadas simultâneas geram "502 Proxy Error".
+    dnit_max_concorrencia: int = Field(default=4, ge=1, le=20)   # requisições simultâneas
+    dnit_retries: int = Field(default=2, ge=0, le=5)             # novas tentativas em 502/503/504
+    dnit_retry_espera: float = Field(default=1.0, ge=0, le=30)   # segundos (cresce a cada tentativa)
 
     # Legendas globais
     legendas: str = ""

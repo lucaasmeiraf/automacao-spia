@@ -372,6 +372,16 @@ Análise de conformidade pluviométrica
   `AsyncHTTPTransport`, porque com `transport=` o httpx ignora o `verify` do client. Em contêiner Linux na
   rede do DNIT, instale a CA interna no sistema do contêiner. O mesmo firewall bloqueia `api.openai.com`
   (categoria `DNIT_DENY`): ver `docs/andamento.md`
+- **Proteção do servidor da SUPRA (2026-09-28):** com ~15 chamadas simultâneas o proxy da SUPRA devolve
+  "502 Proxy Error" para algumas (uma a uma, todas funcionam). `DnitClient` limita as requisições simultâneas
+  (`DNIT_MAX_CONCORRENCIA`, padrão 4, via `asyncio.Semaphore` por instância — há uma por processo) e repete
+  502/503/504 até `DNIT_RETRIES` vezes (padrão 2, espera `DNIT_RETRY_ESPERA` × tentativa, fora do semáforo).
+  Só GETs de leitura; outros status falham na hora, como antes. Timeouts e respostas não-JSON **não** são
+  repetidos (ver `docs/andamento.md`)
+- **Token SUPRA:** JWT HS256 com `{"user": e-mail, "pass": senha}` assinado com a `encryption_key` do SUPRA;
+  enviado no header `token`. Respostas: "Token inválido." = assinatura errada; "Usuário não cadastrado ou
+  dados inválidos." = e-mail/senha errados. Endpoint alternativo documentado pela SUPRA:
+  `relatorio/contexto_ws` (agrega todas as seções numa chamada) — não usado; avaliar no futuro
 - Status do projeto, bloqueios e histórico de entregas: `docs/andamento.md`
 
 ---
