@@ -25,6 +25,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.clients.dnit import DnitClient
 from app.clients.nominatim import NominatimClient
@@ -42,6 +43,7 @@ from app.processing.execucao import (
 )
 from app.routers import admin as admin_router
 from app.routers import auth as auth_router
+from app.routers import ui as ui_router
 from app.security.deps import exigir_chave_webhook
 from app.security.headers import aplicar_cabecalhos
 from app.security.sessions import SessionStore
@@ -162,5 +164,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.env == "dev":
         app.include_router(auth_router.router)
         app.include_router(admin_router.router)
+        # Tela de configuração (fase 3): HTML/CSS/JS estáticos; os dados vêm da API acima.
+        app.include_router(ui_router.router)
+        app.mount("/ui/static", StaticFiles(directory=ui_router.STATIC_DIR), name="ui-static")
 
     return app

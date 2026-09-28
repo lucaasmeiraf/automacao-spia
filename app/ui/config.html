@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Supra IA · Configuração</title>
+  <!-- Sem scripts/estilos inline: a CSP só permite arquivos do próprio servidor. -->
+  <link rel="stylesheet" href="/ui/static/app.css">
+  <script src="/ui/static/config.js" defer></script>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">Supra IA <span class="marca-sep">·</span> <span class="marca-sub">Configuração</span></div>
+    <span class="selo-env" title="Ambiente de desenvolvimento">DEV</span>
+    <div class="topo-dir" id="topo-sessao" hidden>
+      <span id="resumo-ativos" class="resumo-ativos"></span>
+      <span id="usuario" class="usuario"></span>
+      <button id="btn-sair" class="btn btn-fantasma" type="button">Sair</button>
+    </div>
+  </header>
+
+  <main class="conteudo">
+    <!-- Login -->
+    <section id="tela-login" class="login" hidden>
+      <form id="form-login" class="cartao-login" novalidate>
+        <h1>Entrar</h1>
+        <p class="sub">Acesso restrito a administradores.</p>
+        <label class="campo">
+          <span>Usuário</span>
+          <input id="login-usuario" name="username" autocomplete="username" required maxlength="64">
+        </label>
+        <label class="campo">
+          <span>Senha</span>
+          <input id="login-senha" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        </label>
+        <p id="login-erro" class="msg-erro" role="alert" hidden></p>
+        <button id="btn-entrar" class="btn btn-primario btn-largo" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <!-- Aplicação -->
+    <div id="tela-app" hidden>
+      <div id="aviso-config" class="aviso aviso-erro" role="alert" hidden></div>
+
+      <section class="bloco" aria-labelledby="t-topicos">
+        <div class="bloco-cab">
+          <h2 id="t-topicos">Tópicos</h2>
+          <p class="dica">Ligue o que deve rodar. As mudanças ficam pendentes até <strong>Salvar</strong>
+            (gravam <code>config/topics.yaml</code>).</p>
+        </div>
+        <div id="grupos" class="grupos"><p class="vazio">Carregando…</p></div>
+      </section>
+
+      <section class="bloco" aria-labelledby="t-exec">
+        <div class="bloco-cab">
+          <h2 id="t-exec">Executar</h2>
+          <p class="dica">Roda os tópicos ligados <strong>na tela</strong> (salvos ou não) com os prompts da tela.
+            Em <strong>dry-run</strong> os dados são buscados e montados, mas a OpenAI não é chamada.</p>
+        </div>
+        <form id="form-exec" class="form-exec" novalidate>
+          <label class="campo campo-contrato">
+            <span>Contrato</span>
+            <input id="exec-contrato" required maxlength="64" placeholder="00 00000/0000" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span>Início do período</span>
+            <input id="exec-inicio" type="date" required>
+          </label>
+          <label class="campo">
+            <span>Fim do período</span>
+            <input id="exec-fim" type="date" required>
+          </label>
+          <label class="check">
+            <input id="exec-dry" type="checkbox" checked>
+            <span>Dry-run <small>(sem OpenAI, sem custo)</small></span>
+          </label>
+          <button id="btn-executar" class="btn btn-primario" type="submit">Executar ▶</button>
+        </form>
+        <p id="exec-resumo" class="exec-resumo" aria-live="polite"></p>
+        <p id="exec-erro" class="msg-erro" role="alert" hidden></p>
+      </section>
+
+      <section class="bloco" aria-labelledby="t-res">
+        <div class="bloco-cab bloco-cab-linha">
+          <h2 id="t-res">Resultado</h2>
+          <button id="btn-copiar" class="btn btn-fantasma" type="button" hidden>Copiar JSON</button>
+        </div>
+        <div id="resultado" class="resultado"><p class="vazio">Nenhuma execução ainda.</p></div>
+      </section>
+
+      <section class="bloco" aria-labelledby="t-logs">
+        <div class="bloco-cab bloco-cab-linha">
+          <h2 id="t-logs">Logs do servidor</h2>
+          <div class="logs-controles">
+            <label class="campo-inline">Nível
+              <select id="logs-nivel">
+                <option value="DEBUG">Debug</option>
+                <option value="INFO" selected>Info</option>
+                <option value="WARNING">Aviso</option>
+                <option value="ERROR">Erro</option>
+              </select>
+            </label>
+            <label class="check"><input id="logs-execucao" type="checkbox" disabled> <span>Só a última execução</span></label>
+            <button id="btn-logs-atualizar" class="btn btn-fantasma" type="button">Atualizar</button>
+            <button id="btn-logs-limpar" class="btn btn-fantasma" type="button">Limpar tela</button>
+          </div>
+        </div>
+        <div id="logs" class="logs" role="log" aria-live="off"><p class="vazio">Sem linhas.</p></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Alterações pendentes de ativação -->
+  <div id="barra-pendentes" class="barra-pendentes" hidden>
+    <span id="txt-pendentes"></span>
+    <div class="barra-acoes">
+      <button id="btn-descartar" class="btn btn-fantasma" type="button">Descartar</button>
+      <button id="btn-salvar" class="btn btn-primario" type="button">Salvar</button>
+    </div>
+  </div>
+
+  <!-- Editor de prompt -->
+  <dialog id="dlg-prompt" class="dialogo" aria-labelledby="dlg-titulo">
+    <div class="dialogo-cab">
+      <div>
+        <h3 id="dlg-titulo"></h3>
+        <p class="dialogo-sub"><code id="dlg-arquivo"></code></p>
+      </div>
+      <button id="dlg-fechar" class="btn btn-fantasma" type="button" aria-label="Fechar">✕</button>
+    </div>
+    <textarea id="dlg-texto" class="dialogo-texto" spellcheck="false"
+      placeholder="Instrução de sistema enviada à LLM para este tópico…"></textarea>
+    <div class="dialogo-rodape">
+      <span id="dlg-status" class="dialogo-status"></span>
+      <div class="barra-acoes">
+        <button id="dlg-restaurar" class="btn btn-fantasma" type="button">Restaurar salvo</button>
+        <button id="dlg-salvar" class="btn btn-primario" type="button">Salvar no arquivo</button>
+      </div>
+    </div>
+    <p class="dica">O texto desta caixa é usado ao clicar em <strong>Executar</strong>, mesmo sem salvar.
+      Salvar grava <code>prompts/&lt;chave&gt;.md</code> (vale para o webhook também).</p>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -25,7 +25,8 @@ pydantic-settings, OpenAI Chat Completions (via httpx, sem SDK), pytest.
 app/
 ├── main.py              # create_app(settings) (fábrica): webhook, /health, rotas por ENV
 ├── security/            # passwords (argon2), sessions, throttle, deps (exigir_admin/webhook), headers
-├── routers/             # auth.py (login/me/logout) e admin.py (/api/topicos|prompts|executar|logs), só ENV=dev
+├── routers/             # auth.py (login/me/logout), admin.py (/api/topicos|prompts|executar|logs), ui.py (telas) — só ENV=dev
+├── ui/                  # telas: config.html + static/{app.css,config.js} (JS puro; dados SÓ via textContent)
 ├── config.py            # Settings (pydantic-settings) — lê .env
 ├── models.py            # Pydantic: RelatorioRequest / TopicoResultado / RelatorioResponse
 ├── topics.py            # DEFINIÇÃO dos tópicos: TOPICS = {chave: TopicConfig(...)}
@@ -120,9 +121,10 @@ Ao criar um tópico novo: adicione em `TOPICS` **e** em `config/topics.yaml` (co
 testado; há um teste que exige que o YAML liste todos os tópicos).
 
 **Em andamento** (`docs/architecture.md` §10): fases 1 (base), 2a (segurança: login admin, chave do
-webhook, `/docs` desligado, cabeçalhos) e 2b (API de configuração: `/api/topicos`, `/api/prompts`,
-`POST /api/executar` com `dry_run`/`topicos`, `/api/logs`) concluídas. Faltam 3 (tela de configuração,
-só `dev`) e 4 (tela de resultado, `dev`/`homolog`). Requisitos de segurança em §10.10: siga-os; não exponha segredos no front e nunca
+webhook, `/docs` desligado, cabeçalhos), 2b (API de configuração: `/api/topicos`, `/api/prompts`,
+`POST /api/executar` com `dry_run`/`topicos`, `/api/logs`) e 3 (tela de configuração em `/ui/config`, só
+`dev`) concluídas. Falta 4 (tela de resultado, `dev`/`homolog`). No front: nada inline (CSP), nunca
+`innerHTML` com dado da API — `tests/test_ui.py` verifica. Requisitos de segurança em §10.10: siga-os; não exponha segredos no front e nunca
 confie em esconder rota como proteção — a autorização é sempre no servidor.
 
 Documentação Fotográfica (`documentacao_fotografica`) e o Grupo 3 (Construtora) **não** têm processor:
@@ -155,8 +157,8 @@ python -m py_compile app/clients/<arquivo>.py
 ```bash
 pytest tests/ -v
 ```
-Estado atual: 235 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
-segurança, auth, settings, API de configuração, dry-run, buffer de logs). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
+Estado atual: 263 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
+segurança, auth, settings, API de configuração, dry-run, buffer de logs, tela). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
 hermético e `create_app` sem lifespan). Toda mudança de segurança precisa de teste do caso NEGATIVO
 (sem chave, sem sessão, sem CSRF, senha errada, fora de `dev`). Todo handler novo deve ter testes com
 **clients mockados** (`AsyncMock`/`MagicMock`; nunca chamar API real) cobrindo:
@@ -266,8 +268,8 @@ Antes de implementar qualquer issue do backlog, **confirme com o usuário** que 
 
 - Projeto em múltiplos ambientes (dev → homolog → prod). Nunca hardcode credenciais.
 - Ambientes: `dev` = automação + telas de configuração e de resultado; `homolog` = automação + só a tela
-  de resultado (só as respostas, para o analista avaliar); `prod` = só automação (sem tela). As telas ainda
-  não existem — ver `docs/architecture.md` §10.
+  de resultado (só as respostas, para o analista avaliar); `prod` = só automação (sem tela). A tela de
+  configuração existe (`/ui/config`, fase 3); a de resultado ainda não — ver `docs/architecture.md` §10.
 - Segurança (§10.10): `POST /webhook/relatorio` exige `X-API-Key`; `/docs` está desligado; login admin
   (`ADMIN_USERS`). Sessões ficam em memória: rode **um** processo.
 - O Grupo 3 (Construtora) está no n8n mas **não deve ser migrado ainda** — issue futura.

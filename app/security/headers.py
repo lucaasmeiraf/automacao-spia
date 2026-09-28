@@ -31,3 +31,6 @@ def aplicar_cabecalhos(response: Response, caminho: str) -> None:
     # API: nada de respostas em cache (evita dados/tokens ficarem no navegador ou no proxy).
     if caminho.startswith(("/api/", "/webhook/")):
         h.setdefault("Cache-Control", "no-store")
+    # Telas: o navegador pode guardar, mas revalida sempre (uma versão nova aparece no próximo F5).
+    elif caminho == "/" or caminho.startswith("/ui/"):
+        h.setdefault("Cache-Control", "no-cache")

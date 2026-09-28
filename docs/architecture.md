@@ -99,7 +99,11 @@ supra-ia/
 │   │   └── headers.py            #   CSP, nosniff, X-Frame-Options, no-store…
 │   ├── routers/
 │   │   ├── auth.py               # /api/auth/login | me | logout (só ENV=dev)
-│   │   └── admin.py              # /api/topicos | prompts | executar | logs (só ENV=dev, admin)
+│   │   ├── admin.py              # /api/topicos | prompts | executar | logs (só ENV=dev, admin)
+│   │   └── ui.py                 # / → /ui/config, /ui/config, /ui/static (só ENV=dev)
+│   ├── ui/                       # Telas (HTML/CSS/JS puro, sem build)
+│   │   ├── config.html           #   Tela de configuração
+│   │   └── static/               #   app.css, config.js
 │   ├── clients/
 │   │   ├── dnit.py               # API SUPRA (GET secao_ws + download imagem)
 │   │   ├── openai_client.py      # OpenAI Chat Completions (via httpx)
@@ -137,6 +141,7 @@ supra-ia/
 │   ├── test_admin_api.py         # /api/topicos, prompts, executar, logs (+ casos negativos)
 │   ├── test_dry_run.py
 │   ├── test_log_buffer.py
+│   ├── test_ui.py                # tela: rotas por ambiente + segurança estática do front
 │   ├── test_settings_seguranca.py# leitura do .env (hash com '$', chaves curtas…)
 │   ├── conftest.py / helpers.py  # Settings hermético e app sem lifespan
 ├── .env                          # Credenciais locais (NÃO commitar)
@@ -339,7 +344,9 @@ Análise de conformidade pluviométrica
 - [ ] Atividades Executadas da Supervisora (`atividades_supervisora_descricao`) — pertence à Apresentação Supervisora; não migrado
 - [x] ~~Proteger `POST /webhook/relatorio` e desativar `/docs`~~ — feito na fase 2a (2026-09-28)
 - [x] ~~API de configuração (tópicos, prompts, executar, logs)~~ — feito na fase 2b (2026-09-28)
-- [ ] Tela de configuração (dev) e tela de resultado (dev/homolog) — **§10, fases 3–4**
+- [x] ~~Tela de configuração (dev)~~ — feito na fase 3 (2026-09-28)
+- [ ] Tela de resultado (dev/homolog) — **§10, fase 4**
+- [ ] (opcional) Resultado por tópico conforme termina (SSE) em vez de esperar todos — §10.6
 - [ ] Sessões de login ficam em memória (1 processo): migrar para armazenamento compartilhado se um dia rodar com vários processos
 - [ ] Ajuste de prompts por seção conforme feedback dos resultados
 - [ ] Endurecer o parse da LLM (remover blocos ```` ```json ````, avaliar `response_format: json_object`) — o n8n também não tinha
@@ -371,7 +378,7 @@ Análise de conformidade pluviométrica
 
 ## 10. Configuração visual de tópicos e telas por ambiente
 
-> **Status (2026-09-28): proposta aprovada. Fases 1, 2a e 2b ✅ implementadas (base, segurança, API de configuração); 3 e 4 pendentes (ver 10.8).**
+> **Status (2026-09-28): proposta aprovada. Fases 1, 2a, 2b e 3 ✅ implementadas (base, segurança, API de configuração, tela de configuração); 4 pendente (ver 10.8).**
 > Decisões do Lucas incorporadas em 10.9. Segurança/autenticação (exigência dele) em 10.10.
 
 ### 10.1 Objetivo
@@ -458,7 +465,8 @@ Todas as rotas `dev` abaixo exigem sessão de **admin** (`Depends(exigir_admin)`
 | `POST /api/executar` | dev | **O botão "Executar"**: `{contrato, periodo_inicio, periodo_fim, prompts?, topicos?, dry_run?}`; mesma execução do webhook (`processing/execucao.py`); devolve a resposta por tópico + `execucao_id`, `dry_run`, `duracao_ms` | ✅ 2b |
 | `GET /api/logs` | dev | Últimas linhas de log (buffer em memória, 1000 linhas): `?nivel=INFO&execucao=<id>&apos=<seq>&limite=200` | ✅ 2b |
 | `GET /api/execucoes`, `GET /api/execucoes/{id}` | dev, homolog | Respostas das execuções feitas pela tela | 4 |
-| `GET /ui/config`, `GET /ui/resultado` | dev / dev+homolog | Páginas estáticas | 3 / 4 |
+| `GET /ui/config` (+ `/` e `/ui/static/*`) | dev | Tela de configuração (página estática) | ✅ 3 |
+| `GET /ui/resultado` | dev, homolog | Tela de resultado | 4 |
 
 **Modo `dry_run`** (resolve a preocupação com créditos): executa `fetch` + montagem do payload e **não chama
 a OpenAI**; devolve o que *seria* enviado (tamanho, modelo). Serve para conferir dados e prompts sem gastar
@@ -516,6 +524,30 @@ Cada cartão mostra estratégia, modelo, endpoint e um selo de custo (gpt-4o vis
 pendentes até "Salvar" (evita ligar tópico caro sem querer). Tópicos sem implementação (Grupo 3,
 Documentação Fotográfica) aparecem bloqueados.
 
+*Como foi implementado (fase 3, 2026-09-28):*
+- **Arquivos:** `app/ui/config.html` + `app/ui/static/{app.css,config.js}`; rotas em `app/routers/ui.py`
+  (`GET /` → `/ui/config`, `GET /ui/config`, `StaticFiles` em `/ui/static`), **só registradas com `ENV=dev`**
+  (fora de dev: 404). A página é só o "casco": sem dados, sem segredos; tudo vem da API, que exige a sessão.
+  Cache: `no-cache` (revalida a cada carga).
+- **Endereço:** `http://localhost:8000/` (abra por `localhost`/`127.0.0.1`: o navegador aceita o cookie
+  `Secure` nesses endereços; por IP de rede sem HTTPS o login não funciona — ver 10.10).
+- **Segurança do front:** nada inline (CSP `'self'`); dados da API sempre como texto (`textContent`), nunca
+  `innerHTML`; CSRF só em memória; `sessionStorage` guarda apenas contrato/período do formulário. Testes
+  estáticos em `tests/test_ui.py` impedem regressões (inline, `innerHTML`/`eval`, `localStorage`, URLs externas,
+  rota /api inexistente).
+- **Executar = o que está na tela:** o botão envia `topicos` = tópicos **ligados na tela** (salvos ou não) e
+  `prompts` = **rascunhos** não salvos do editor; tópicos sem rascunho usam `prompts/<chave>.md`. Cada cartão
+  tem "Só este ▶" (execução avulsa, inclusive de tópico desligado).
+- **Custo:** dry-run vem **marcado por padrão**. Execução real exige um segundo clique no mesmo botão em até 6 s
+  (botão fica vermelho: "Confirmar execução real (N)"); o resumo acima do botão avisa quantos tópicos usam
+  gpt-4o (visão).
+- **Resultado:** cartão por tópico com selo (Conforme / Atenção / Não Conforme / Erro / Dry-run), `motivo`,
+  JSON completo e `infos` recolhíveis (textos > 3 000 caracteres, como base64, são encurtados só na exibição);
+  no dry-run, modelo, tokens estimados e as mensagens que seriam enviadas. "Copiar JSON" copia a resposta bruta.
+- **Logs:** atualizados a cada 1,5 s durante a execução; depois, filtro "só a última execução" e por nível.
+- **Sessão:** 401 em qualquer chamada volta ao login mantendo rascunhos e alterações pendentes; o navegador
+  avisa ao sair da página com alterações não salvas.
+
 ### 10.7 Tela de resultado (dev e homolog)
 
 Exibe a resposta consolidada **distribuída em tópicos**, como o n8n devolve: um cartão por tópico com
@@ -535,7 +567,8 @@ Em homolog não há nenhum controle de configuração.
 2b. ✅ **API de configuração** (2026-09-28): `GET/PUT /api/topicos`, `GET/PUT /api/prompts`, `POST /api/executar`
     (`dry_run`, `topicos`), `GET /api/logs` (buffer em memória). Todas ficam em `routers/admin.py`, com
     `exigir_admin` no router inteiro. Detalhes em 10.5.
-3. **Tela de configuração** (dev, somente admin): cartões, editor de prompts, Executar, logs.
+3. ✅ **Tela de configuração** (2026-09-28, dev, somente admin): cartões, editor de prompts, Executar, logs
+   — ver "Como foi implementado" em 10.6.
 4. **Execuções + tela de resultado** (dev/homolog): só as respostas, para o analista avaliar.
 
 ### 10.9 Decisões (2026-09-28)
@@ -576,7 +609,7 @@ o front não conter nenhum segredo. O que fazemos para reduzir a superfície:
 | Força bruta ✅ | Limite de tentativas por IP e por par IP+usuário, com espera crescente (5 falhas → 5 s, dobrando até 15 min); mensagem de erro genérica e tempo de resposta constante (não revela se o usuário existe) |
 | Cabeçalhos de segurança ✅ | CSP restritiva (sem scripts inline, só `self`), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` nas respostas da API |
 | Superfície da API ✅ | `/docs`, `/redoc` e `/openapi.json` desligados (só ligáveis com `ENV=dev` + `ENABLE_DOCS=true`); erros ao cliente sempre genéricos; 422 sem devolver o valor enviado (não ecoa a senha) |
-| Front sem vetor de XSS (fase 3) | Renderizar respostas da LLM/SUPRA sempre como **texto** (`textContent`), nunca como HTML |
+| Front sem vetor de XSS ✅ | Respostas da LLM/SUPRA e logs sempre como **texto** (`textContent`), nunca como HTML; nada inline; verificado por `tests/test_ui.py` |
 | Auditoria ✅ | Login/logout/falhas são logados (usuário e IP, nunca a senha; nome truncado e escapado contra log injection). Alterações de tópicos (ligados/desligados), prompts salvos (chave e tamanho) e execuções pela tela também, com o usuário |
 | Transporte | TLS obrigatório fora de `localhost` (reverse proxy); sem HTTPS o cookie `Secure` não funciona, de propósito |
 | Credencial do admin ✅ | `ADMIN_USERS` no `.env` (só o **hash**, vários admins possíveis); `python -m scripts.gerar_hash_senha` gera; nada de senha padrão; sem admin configurado ninguém loga |

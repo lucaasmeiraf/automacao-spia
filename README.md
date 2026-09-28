@@ -38,7 +38,9 @@ app/
 ├── security/                 # senhas argon2, sessões, CSRF, limite de tentativas, cabeçalhos
 ├── routers/
 │   ├── auth.py               # /api/auth/login | me | logout (só ENV=dev)
-│   └── admin.py              # /api/topicos | prompts | executar | logs (só ENV=dev, admin)
+│   ├── admin.py              # /api/topicos | prompts | executar | logs (só ENV=dev, admin)
+│   └── ui.py                 # tela de configuração: / → /ui/config (só ENV=dev)
+├── ui/                       # config.html + static/ (CSS e JS puros, sem build)
 ├── clients/
 │   ├── dnit.py               # API SUPRA (GET secao_ws + download imagem)
 │   ├── openai_client.py      # OpenAI Chat Completions (via httpx)
@@ -130,6 +132,13 @@ curl -X POST http://localhost:8000/webhook/relatorio \
     ]
   }'
 ```
+
+## Tela de configuração (só `ENV=dev`)
+
+Com o servidor rodando, abra **`http://localhost:8000/`** e entre com um usuário de `ADMIN_USERS`. Na tela:
+ligar/desligar tópicos (e salvar), editar prompts, **Executar** (dry-run marcado por padrão; a execução real
+pede confirmação; "Só este ▶" roda um tópico) e acompanhar os logs. Use `localhost` (não o IP da máquina):
+com `COOKIE_SECURE=true` o login só funciona em `localhost` ou HTTPS.
 
 ## API de configuração (só `ENV=dev`, login de admin)
 

@@ -18,11 +18,17 @@ Decisões técnicas e detalhes ficam em [`architecture.md`](architecture.md); aq
 | API de configuração (`/api/topicos`, `/api/prompts`, `/api/executar`, `/api/logs`) — fase 2b | ✅ |
 | **Teste de integração real (SUPRA + OpenAI)** | ⛔ **Bloqueado** — ver "Bloqueios" |
 | Prompts de cada tópico (`prompts/<chave>.md`) | ⚠️ Não existem ainda — ver "Bloqueios" |
-| Tela de configuração (dev) — fase 3 | ⏳ Próxima |
+| Tela de configuração (dev) — fase 3 | ✅ `http://localhost:8000/` — validada com dry-run (sem OpenAI) |
 | Tela de resultado (dev/homolog) — fase 4 | ⏳ |
 | Grupo 3 (Construtora), Documentação Fotográfica | 💤 Fora do escopo atual |
 
-Testes automatizados: **235 passando** (`pytest`).
+Testes automatizados: **263 passando** (`pytest`).
+
+**Depois da liberação da OpenAI, o fluxo roda pela tela?** Sim. O botão Executar usa exatamente o mesmo
+caminho do webhook (`processing/execucao.py`), já exercitado com SUPRA real, dry-run e smoke test da tela.
+O único trecho nunca executado com resposta real é a chamada HTTP à OpenAI (coberta por testes com mocks).
+Para rodar de verdade faltam: liberação (B1), token SUPRA válido (B2) e os prompts (B3) — estes podem ser
+escritos e salvos pela própria tela.
 
 ---
 
@@ -38,10 +44,11 @@ Testes automatizados: **235 passando** (`pytest`).
 
 ## Onde estamos atacando agora
 
-1. **Destravar o teste real** (B1–B3). Enquanto isso, o `dry_run` já permite validar busca e montagem sem
-   OpenAI assim que a SUPRA voltar a responder.
-2. **Fase 3 — tela de configuração** (só `dev`, admin): cartões de tópicos, editor de prompts, Executar
-   (com dry-run), painel de logs. Não depende dos bloqueios — consome a API da fase 2b.
+1. **Destravar o teste real** (B1–B3). A tela já está pronta para isso: escrever os prompts no editor, rodar
+   um dry-run para conferir dados e prompts, e depois a execução real de um tópico ("Só este ▶").
+2. **Validação visual da tela pelo Lucas** (abrir `http://localhost:8000/`, entrar com o admin do `.env`) e
+   ajustes de usabilidade.
+3. **Fase 4 — tela de resultado** (dev/homolog), para o analista avaliar as respostas.
 
 ---
 
@@ -65,6 +72,20 @@ Testes automatizados: **235 passando** (`pytest`).
 ---
 
 ## Histórico de entregas (mais recente primeiro)
+
+### 2026-09-28 — Fase 3: tela de configuração
+- Página única em `http://localhost:8000/` (só `ENV=dev`), HTML/CSS/JS puro, tema claro/escuro:
+  login; cartões de tópicos por grupo (ligar/desligar, ativar/desligar grupo, selo de custo `$$$`, estado
+  do prompt) com barra "N alterações não salvas — Descartar/Salvar"; editor de prompt (rascunho vale na
+  execução, "Salvar no arquivo" grava `prompts/<chave>.md`); Executar (dry-run marcado por padrão; execução
+  real pede confirmação; "Só este ▶" por cartão); resultado por tópico com selos, `motivo`, JSON e `infos`;
+  painel de logs ao vivo, filtrável pela execução.
+- Segurança: nada inline (CSP), dados sempre como texto, CSRF só em memória; 28 testes novos (rotas por
+  ambiente + verificação estática do front). 235 → 263 testes.
+- **Smoke test** (servidor de demonstração com admin temporário e cópias da configuração): página e
+  estáticos, login/logout, ligar tópico (com e sem CSRF), salvar prompt, executar em dry-run (prompt salvo e
+  rascunho aplicados corretamente) e logs filtrados pela execução — tudo OK. A verificação visual no
+  navegador ficou pendente (extensão do Chrome não conectada nesta sessão).
 
 ### 2026-09-28 — Teste de integração em dev (parcial) + correção de TLS
 - `.env` preenchido pelo Lucas (ENV=dev, 1 admin, chaves presentes).
@@ -97,6 +118,6 @@ Testes automatizados: **235 passando** (`pytest`).
 1. [ ] B1 — pedir liberação de `api.openai.com` à rede do DNIT (ou definir onde o serviço vai rodar).
 2. [ ] B2 — token SUPRA novo + contrato/período de teste com dados.
 3. [ ] B3 — recuperar/redigir os 14 prompts.
-4. [ ] Refazer o teste de integração: `dry_run` completo → execução real de 1 tópico barato → todos.
-5. [ ] Fase 3 — tela de configuração (pode começar em paralelo aos itens 1–3).
+4. [ ] Refazer o teste de integração **pela tela**: dry-run completo → "Só este ▶" real num tópico barato → todos.
+5. [x] ~~Fase 3 — tela de configuração~~ (2026-09-28) · [ ] validação visual e ajustes pelo Lucas.
 6. [ ] Fase 4 — tela de resultado.
