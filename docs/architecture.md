@@ -344,6 +344,10 @@ Análise de conformidade pluviométrica
 - [ ] Ajuste de prompts por seção conforme feedback dos resultados
 - [ ] Endurecer o parse da LLM (remover blocos ```` ```json ````, avaliar `response_format: json_object`) — o n8n também não tinha
 - [ ] Validar o valor de `conforme` (`Conforme` / `Atenção` / `Não Conforme`) no resultado
+- [ ] Distinguir **erro de acesso da SUPRA** (`status: false` + "Usuário não cadastrado ou dados inválidos") de
+  **seção sem dados**: hoje os dois viram conteúdo vazio e seguiriam para a LLM (custo + "Não Conforme"
+  enganoso). Proposta: `ok: false` sem chamar a LLM no primeiro caso. Descoberto no teste de 2026-09-28;
+  aguardando confirmação (muda o comportamento herdado do n8n)
 - [ ] Formato de saída: o n8n devolvia `analises[]`; o Python devolve `topicos[]` (`topico`, `ok`, `conteudo`, `erro`). Documentar a mudança para quem consumir. *(Correção: o campo `id_contrato` do nó final do n8n nunca foi definido em "Define Variáveis Globais" — saía sempre ausente; não é uma lacuna do Python.)*
 
 ---
@@ -355,6 +359,13 @@ Análise de conformidade pluviométrica
 - Para imagens (Mapa de Situação, Diagrama de Ocorrências), o modelo usado é `gpt-4o` com suporte a visão — custo significativamente maior que `gpt-4o-mini`
 - O `ProcessingContext` é criado por requisição (`ProcessingContext.da_app(app.state)`, no webhook e no `/api/executar`), agrupa todos os clientes HTTP e é passado para `processar_topico()`
 - Os clientes Open-Meteo e Nominatim são APIs públicas sem autenticação; o User-Agent `SupraDNIT/1.0` é obrigatório por política de uso
+- **Rede do DNIT (2026-09-28):** o proxy faz inspeção de TLS e reassina sites externos com a CA interna
+  `DNIT_SubCA_SSL`. Por isso o `AsyncClient` (em `create_app`) valida TLS com `ssl.create_default_context()`
+  (repositório do sistema) em vez do `certifi`; a verificação continua ativa. O `verify` vai no
+  `AsyncHTTPTransport`, porque com `transport=` o httpx ignora o `verify` do client. Em contêiner Linux na
+  rede do DNIT, instale a CA interna no sistema do contêiner. O mesmo firewall bloqueia `api.openai.com`
+  (categoria `DNIT_DENY`): ver `docs/andamento.md`
+- Status do projeto, bloqueios e histórico de entregas: `docs/andamento.md`
 
 ---
 

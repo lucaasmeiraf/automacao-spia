@@ -52,6 +52,7 @@ config/topics.yaml       # ATIVAÇÃO dos tópicos (true/false) — versionado
 prompts/<chave>.md       # prompt de sistema por tópico (o payload sobrepõe)
 tests/                   # pytest, arquivos planos: test_<assunto>.py
 docs/architecture.md     # documentação de arquitetura e decisões
+docs/andamento.md        # STATUS: entregas, frente atual, bloqueios, próximos passos
 ```
 
 Não existem `src/`, `BaseProcessor` nem `tests/processors/` — não os crie.
@@ -200,6 +201,10 @@ Atualize a documentação sempre que:
 - A estrutura de pastas mudar → atualize este arquivo, o README e a seção 3.2
 
 **Nunca** espere acumular muitas mudanças — atualize ao final de cada tarefa concluída.
+
+Atualize também **`docs/andamento.md`** ao final de cada tarefa (pedido do Lucas): entrada nova no topo do
+histórico de entregas, quadro "Situação em uma olhada", bloqueios e próximos passos. Resultados de testes de
+integração (o que passou, o que falhou e por quê) vão lá.
 
 ---
 

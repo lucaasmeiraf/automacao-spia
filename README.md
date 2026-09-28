@@ -5,6 +5,8 @@ FastAPI. Analisa relatórios de supervisão de obras do DNIT (IN_51/2021) buscan
 dados da API SUPRA, processando cada seção com LLM (OpenAI) e devolvendo um JSON
 consolidado de conformidade.
 
+> **Status do projeto, bloqueios e próximos passos:** [`docs/andamento.md`](docs/andamento.md).
+
 ## Mapeamento n8n → Python
 
 | n8n | Aqui |

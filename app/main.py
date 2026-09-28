@@ -18,6 +18,7 @@ Execução:  uvicorn app.main:create_app --factory
 from __future__ import annotations
 
 import logging
+import ssl
 from contextlib import asynccontextmanager
 
 import httpx
@@ -77,9 +78,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logging.getLogger().addHandler(app.state.logs)
         _avisos_de_seguranca(settings)
         # Um único AsyncClient reaproveitado por toda a aplicação (connection pooling).
+        # TLS verificado contra o repositório de certificados do SISTEMA (não o do certifi): a rede do
+        # DNIT inspeciona HTTPS e reassina sites externos (ex.: api.openai.com) com a CA interna
+        # "DNIT_SubCA_SSL", que o Windows conhece e o certifi não. Continua verificando tudo.
+        # (o `verify` vai no transport: com `transport=` o httpx ignora o `verify` do client.)
         async with httpx.AsyncClient(
             timeout=settings.http_timeout,
-            transport=httpx.AsyncHTTPTransport(retries=settings.http_max_retries),
+            transport=httpx.AsyncHTTPTransport(
+                retries=settings.http_max_retries,
+                verify=ssl.create_default_context(),
+            ),
         ) as client:
             app.state.dnit = DnitClient(settings, client)
             app.state.openai = OpenAIClient(settings, client)
