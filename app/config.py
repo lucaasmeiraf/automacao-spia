@@ -8,7 +8,9 @@ segredos FORA do código, carregados do ambiente.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +19,61 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Erros de validação NÃO podem imprimir o valor recebido (pode ser um segredo).
+        hide_input_in_errors=True,
     )
+
+    # Ambiente de execução. O padrão é "prod" de propósito (falha fechada): se a
+    # variável ENV for esquecida, nenhuma rota/tela de configuração é exposta.
+    env: Literal["dev", "homolog", "prod"] = "prod"
+
+    # Ativação dos tópicos (o "fio" do n8n) e prompts por tópico.
+    topics_file: str = "config/topics.yaml"
+    prompts_dir: str = "prompts"
+
+    # --- Segurança ---
+    # Chave que o SISTEMA CHAMADOR envia no header `X-API-Key` do POST /webhook/relatorio.
+    # Ausente => o webhook fica indisponível (503): nunca aberto por esquecimento.
+    webhook_api_key: str | None = None
+
+    # Administradores (login da tela de configuração): {"usuario": "<hash argon2>"}.
+    # Guarda só o HASH da senha, nunca a senha. Gere com `python -m scripts.gerar_hash_senha`.
+    admin_users: dict[str, str] = {}
+
+    # Cookie de sessão com flag Secure (só trafega em HTTPS). Deixe true; em http puro
+    # (sem TLS) o navegador descarta o cookie e o login não funciona — use um proxy HTTPS.
+    cookie_secure: bool = True
+    # Expiração da sessão: por inatividade e absoluta.
+    session_idle_minutes: int = 30
+    session_max_hours: int = 8
+
+    # /docs, /redoc e /openapi.json ficam DESLIGADOS. Só é possível ligar com ENV=dev.
+    enable_docs: bool = False
+
+    @field_validator("webhook_api_key", mode="before")
+    @classmethod
+    def _chave_webhook(cls, v: object) -> object:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None  # linha em branco no .env = não configurada
+        if isinstance(v, str) and len(v.strip()) < 32:
+            raise ValueError(
+                "WEBHOOK_API_KEY curta demais (mínimo 32 caracteres). "
+                "Gere uma com `python -m scripts.gerar_chave`."
+            )
+        return v.strip() if isinstance(v, str) else v
+
+    @field_validator("admin_users")
+    @classmethod
+    def _admins(cls, v: dict[str, str]) -> dict[str, str]:
+        for usuario, senha_hash in v.items():
+            if not usuario.strip():
+                raise ValueError("ADMIN_USERS: nome de usuário vazio.")
+            if not senha_hash.startswith("$argon2"):
+                raise ValueError(
+                    f"ADMIN_USERS: o valor de '{usuario}' não é um hash argon2. "
+                    "Gere com `python -m scripts.gerar_hash_senha` (nunca coloque a senha em texto)."
+                )
+        return v
 
     # OpenAI
     openai_api_key: str

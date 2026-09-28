@@ -1,0 +1,29 @@
+# Ativação dos tópicos — o "fio" do n8n.
+#
+#   true  = o tópico roda (desde que exista em app/topics.py e tenha prompt);
+#   false = o tópico é ignorado, mesmo que o payload traga o prompt dele.
+#
+# Tópico ausente deste arquivo = desligado. Use SEMPRE true/false (sem aspas).
+# Este arquivo é relido a cada requisição: não precisa reiniciar o servidor.
+# Se ele estiver inválido, NENHUM tópico roda (a API responde 503) — nunca liga tudo.
+#
+# Atenção a custo: mapa_situacao e diagrama_ocorrencias usam gpt-4o com visão (bem mais caro).
+
+topicos:
+  # Grupo 1 — Relatório Principal
+  justificativa: true
+  resumo_projeto: true
+  historico: true
+  introducao: true
+  oaes: true
+  rpfo: true
+  mapa_situacao: true
+  diagrama_ocorrencias: true
+
+  # Grupo 2 — Apresentação Supervisora
+  info_contratuais_supervisora: true
+  termos_aditivos_supervisora: true
+  responsaveis_tecnicos_supervisora: true
+  paralisacao_reinicio: true
+  apostilas_supervisora: true
+  controle_pluviometrico: true

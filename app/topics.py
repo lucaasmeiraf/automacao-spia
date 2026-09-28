@@ -1,10 +1,13 @@
 """
-Registro declarativo dos tópicos.
+Registro declarativo dos tópicos (DEFINIÇÃO: como cada tópico funciona).
 
 No n8n, cada tópico era uma sequência de ~4 nós repetidos (fetch → payload →
-LLM → limpa retorno). Aqui, cada tópico é UMA linha de configuração, e o
+LLM → limpa retorno). Aqui, cada tópico é UMA entrada de configuração, e o
 `pipeline.py` executa a sequência genericamente. Adicionar um tópico novo =
 adicionar uma entrada neste dicionário.
+
+Estar aqui NÃO significa rodar: se o tópico roda ou não (o "fio" do n8n) é a
+ATIVAÇÃO, definida em `config/topics.yaml` (ver `app/topic_state.py`).
 
 Estratégias disponíveis (campo `estrategia`):
   - "campo"        usa um único campo do registro (campo_conteudo) como user content.
@@ -20,12 +23,13 @@ Estratégias disponíveis (campo `estrategia`):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class TopicConfig:
-    # chave do tópico (igual à usada no dicionário de prompts / "Separa Prompts")
+    # chave do tópico (igual à usada no dicionário de prompts / "Separa Prompts"
+    # e em config/topics.yaml e prompts/<chave>.md)
     chave: str
     # sufixo do endpoint: .../secao_ws/<endpoint>
     endpoint: str
@@ -44,11 +48,23 @@ class TopicConfig:
     empty_as_array: bool = False
     # campos cujo preenchimento indica que o registro tem dados reais
     campos_presenca: tuple[str, ...] = ()
+    # apresentação (usados pela tela de configuração/resultado)
+    titulo: str = ""
+    grupo: str = ""
+
+    @property
+    def nome(self) -> str:
+        """Nome legível para exibição (cai para a chave se não houver título)."""
+        return self.titulo or self.chave
+
+
+GRUPO_PRINCIPAL = "Relatório Principal"
+GRUPO_SUPERVISORA = "Apresentação Supervisora"
 
 
 # ------------------------------------------------------------------
-# Registro de tópicos ativos.
-# Tópicos comentados = ainda não portados ou desativados por padrão.
+# Registro de tópicos DEFINIDOS. A ordem deste dicionário é a ordem de
+# exibição e de resposta. Tópicos comentados = ainda não portados.
 # ------------------------------------------------------------------
 TOPICS: dict[str, TopicConfig] = {
 
@@ -62,6 +78,8 @@ TOPICS: dict[str, TopicConfig] = {
         html_fields=("resumo", "descricao"),
         estrategia="campo",
         campo_conteudo="resumo",
+        titulo="Justificativa",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "resumo_projeto": TopicConfig(
         chave="resumo_projeto",
@@ -71,6 +89,8 @@ TOPICS: dict[str, TopicConfig] = {
         html_fields=("resumo", "descricao"),
         estrategia="campo",
         campo_conteudo="resumo",
+        titulo="Resumo do Projeto",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "historico": TopicConfig(
         chave="historico",
@@ -80,6 +100,8 @@ TOPICS: dict[str, TopicConfig] = {
         html_fields=("resumo", "descricao"),
         estrategia="campo",
         campo_conteudo="resumo",
+        titulo="Histórico",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "introducao": TopicConfig(
         chave="introducao",
@@ -89,6 +111,8 @@ TOPICS: dict[str, TopicConfig] = {
         html_fields=("resumo", "descricao"),
         estrategia="campo",
         campo_conteudo="resumo",
+        titulo="Introdução",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "oaes": TopicConfig(
         chave="oaes",
@@ -104,6 +128,8 @@ TOPICS: dict[str, TopicConfig] = {
             "gabarito_navegacao", "cota_na", "ano_estudo", "tipo_fundacao",
             "descricao",
         ),
+        titulo="OAEs",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "rpfo": TopicConfig(
         chave="rpfo",
@@ -117,6 +143,8 @@ TOPICS: dict[str, TopicConfig] = {
             "analista_responsavel", "motivacao", "status_detalhado",
             "ultima_alteracao",
         ),
+        titulo="RPFO",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "mapa_situacao": TopicConfig(
         chave="mapa_situacao",
@@ -124,6 +152,8 @@ TOPICS: dict[str, TopicConfig] = {
         model="gpt-4o",
         max_tokens=800,
         estrategia="imagem",
+        titulo="Mapa de Situação",
+        grupo=GRUPO_PRINCIPAL,
     ),
     "diagrama_ocorrencias": TopicConfig(
         chave="diagrama_ocorrencias",
@@ -131,6 +161,8 @@ TOPICS: dict[str, TopicConfig] = {
         model="gpt-4o",
         max_tokens=800,
         estrategia="imagem",
+        titulo="Diagrama de Ocorrências",
+        grupo=GRUPO_PRINCIPAL,
     ),
 
     # ── Grupo 2 (Apresentação Supervisora) ─────────────────────────
@@ -141,6 +173,8 @@ TOPICS: dict[str, TopicConfig] = {
         model="gpt-4o-mini",
         max_tokens=800,
         estrategia="contratuais",
+        titulo="Informações Contratuais",
+        grupo=GRUPO_SUPERVISORA,
     ),
     "termos_aditivos_supervisora": TopicConfig(
         chave="termos_aditivos_supervisora",
@@ -151,6 +185,8 @@ TOPICS: dict[str, TopicConfig] = {
         estrategia="json",
         empty_as_array=True,
         campos_presenca=("numero_termo", "numero", "num_termo"),
+        titulo="Termos Aditivos",
+        grupo=GRUPO_SUPERVISORA,
     ),
     "responsaveis_tecnicos_supervisora": TopicConfig(
         chave="responsaveis_tecnicos_supervisora",
@@ -161,6 +197,8 @@ TOPICS: dict[str, TopicConfig] = {
         estrategia="json",
         empty_as_array=True,
         campos_presenca=("profissional", "nome", "nome_profissional"),
+        titulo="Responsáveis Técnicos",
+        grupo=GRUPO_SUPERVISORA,
     ),
     "paralisacao_reinicio": TopicConfig(
         chave="paralisacao_reinicio",
@@ -175,6 +213,8 @@ TOPICS: dict[str, TopicConfig] = {
         ),
         empty_as_array=True,
         campos_presenca=("tipo_documento", "data_paralisacao_reinicio", "motivacao"),
+        titulo="Paralisação / Reinício",
+        grupo=GRUPO_SUPERVISORA,
     ),
     "apostilas_supervisora": TopicConfig(
         chave="apostilas_supervisora",
@@ -189,6 +229,8 @@ TOPICS: dict[str, TopicConfig] = {
         ),
         empty_as_array=True,
         campos_presenca=("numero_apostila", "numero", "num_apostila"),
+        titulo="Apostilas",
+        grupo=GRUPO_SUPERVISORA,
     ),
     "controle_pluviometrico": TopicConfig(
         chave="controle_pluviometrico",
@@ -196,15 +238,19 @@ TOPICS: dict[str, TopicConfig] = {
         model="gpt-4o-mini",
         max_tokens=1500,
         estrategia="pluviometrico",
+        titulo="Controle Pluviométrico",
+        grupo=GRUPO_SUPERVISORA,
     ),
 
-    # ── Desativados por padrão (implementação futura ou alto custo) ─
+    # ── Ainda não portados (implementação futura ou alto custo) ────
     # "documentacao_fotografica": TopicConfig(
     #     chave="documentacao_fotografica",
     #     endpoint="documentacao_fotografica",
     #     model="gpt-4o",
     #     max_tokens=1200,
     #     estrategia="doc_fotografica",
+    #     titulo="Documentação Fotográfica",
+    #     grupo=GRUPO_PRINCIPAL,
     # ),
 }
 

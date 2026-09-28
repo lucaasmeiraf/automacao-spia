@@ -18,3 +18,13 @@ class ProcessingContext:
     openai: OpenAIClient
     openmeteo: OpenMeteoClient
     nominatim: NominatimClient
+
+    @classmethod
+    def da_app(cls, state) -> ProcessingContext:
+        """Monta o contexto a partir dos clientes guardados em `app.state` (lifespan)."""
+        return cls(
+            dnit=state.dnit,
+            openai=state.openai,
+            openmeteo=state.openmeteo,
+            nominatim=state.nominatim,
+        )
