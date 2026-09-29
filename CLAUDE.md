@@ -171,7 +171,7 @@ python -m py_compile app/clients/<arquivo>.py
 ```bash
 pytest tests/ -v
 ```
-Estado atual: 277 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
+Estado atual: 397 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
 segurança, auth, settings, API de configuração, dry-run, buffer de logs, tela, cliente SUPRA). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
 hermético e `create_app` sem lifespan). Toda mudança de segurança precisa de teste do caso NEGATIVO
 (sem chave, sem sessão, sem CSRF, senha errada, fora de `dev`). Todo handler novo deve ter testes com
@@ -241,7 +241,8 @@ integração (o que passou, o que falhou e por quê) vão lá.
 ```
 
 O fluxo genérico (`pipeline.processar_topico`) faz: fetch → `_montar_user_content` → `ctx.openai.chat(body)`
-→ `_interpretar_retorno` → anexa `infos` (dado enviado à LLM) → `TopicoResultado`.
+→ `interpretar_resposta` (`llm_resposta.py`) → anexa `infos` (dado enviado à LLM; lista na estratégia
+`json`) → `TopicoResultado`.
 
 ### Tratamento de erro
 
@@ -264,9 +265,19 @@ Use sempre `strip_html()` (`app/processing/html_clean.py`) ou `limpar_registro(.
 
 ### Parse de resposta LLM
 
-`OpenAIClient.chat()` devolve o texto de `choices[0].message.content`. O fluxo genérico interpreta com
-`_interpretar_retorno` (`pipeline.py`): `json.loads`, e se falhar devolve o texto puro. Não há remoção de
-blocos ```` ```json ```` nem `response_format` (o n8n original também não tinha) — ver backlog.
+Tudo em `app/processing/llm_resposta.py` — **não** use `json.loads` direto na resposta da IA:
+- `pedir_json(body)`: liga `response_format: json_object` quando as mensagens citam "JSON" (a OpenAI exige a
+  palavra; sem ela o modo não é ligado). Use em todo corpo novo enviado à OpenAI.
+- `interpretar_resposta(texto, identificador, campos_extras)`: remove ```` ```json ````, recorta JSON cercado de
+  texto e, se não houver JSON válido, recupera `conforme`/`motivo`/campos por regex e marca `erro_parse: true`
+  (com `resposta_ia`). Sempre devolve objeto com `identificador`, `conforme`, `motivo`; mantém tudo o que a IA
+  respondeu. Handlers com esquema fixo (imagem) usam `extrair_json` + `campo_por_regex` e garantem as chaves.
+- `OpenAIClient.chat()` loga tokens gastos por chamada e avisa quando a resposta foi cortada por `max_tokens`
+  (`finish_reason=length`, causa comum de JSON quebrado).
+
+Referência do n8n: 17 dos 20 nós "Limpa Retorno" removiam ```` ```json ```` e recuperavam campos por regex; o
+fluxo original está em `/srv/projetos/automacao-spia/data/n8n-fluxo.json` (fora do Git). Não é para copiar o
+n8n: onde ele tinha bugs (metadados lidos no nó errado, `image/png` fixo), o Python faz certo.
 
 ---
 

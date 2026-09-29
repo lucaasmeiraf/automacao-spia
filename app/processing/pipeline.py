@@ -16,6 +16,7 @@ import logging
 
 from app.models import TopicoResultado
 from app.processing.context import ProcessingContext
+from app.processing.llm_resposta import interpretar_resposta, pedir_json
 from app.processing.records import detectar_vazio, limpar_registro
 from app.topics import TopicConfig
 
@@ -69,15 +70,14 @@ def _montar_user_content(cfg: TopicConfig, registros: list[dict]) -> str:
     return str(primeiro.get(cfg.campo_conteudo, "") or "")
 
 
-def _interpretar_retorno(conteudo: str):
-    """
-    Tenta interpretar a resposta da IA como JSON.
-    Se não for JSON válido, devolve o texto puro.
-    """
-    try:
-        return json.loads(conteudo)
-    except (json.JSONDecodeError, TypeError):
-        return conteudo
+def _infos(cfg: TopicConfig, user_content: str):
+    """Dado enviado à LLM, para `infos`: na estratégia "json" vai como lista (não como texto JSON)."""
+    if cfg.estrategia == "json":
+        try:
+            return json.loads(user_content)
+        except json.JSONDecodeError:
+            pass
+    return user_content
 
 
 async def processar_topico(
@@ -122,22 +122,21 @@ async def processar_topico(
         # 2) PAYLOAD (monta corpo da chamada à OpenAI)
         user_content = _montar_user_content(cfg, registros)
 
-        body = {
+        body = pedir_json({
             "model": cfg.model,
             "max_tokens": cfg.max_tokens,
             "messages": [
                 {"role": "system", "content": prompt_sistema},
                 {"role": "user", "content": user_content},
             ],
-        }
+        })
 
         # 3) LLM
         resposta = await ctx.openai.chat(body)
 
-        # 4) LIMPA RETORNO (interpreta + anexa dado bruto original em 'infos')
-        conteudo = _interpretar_retorno(resposta)
-        if isinstance(conteudo, dict):
-            conteudo["infos"] = user_content
+        # 4) LIMPA RETORNO (interpreta + anexa o dado enviado à LLM em 'infos', sem custo de tokens)
+        conteudo = interpretar_resposta(resposta, cfg.nome)
+        conteudo["infos"] = _infos(cfg, user_content)
 
         return TopicoResultado(topico=cfg.chave, ok=True, conteudo=conteudo)
 

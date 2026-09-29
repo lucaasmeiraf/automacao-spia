@@ -235,6 +235,23 @@ E o header: `token: <JWT>`
 
 Download de arquivos (imagens): `GET /cgcont/ai/arquivo/download_ws?contrato=...&nome_arquivo=...`
 
+- `nome_arquivo` vem do `secao_ws` do tópico (formato real, 2026-09-29: `nome_arquivo`, `nomeOriginalArquivo`,
+  `desc_arquivo` — `"None"` quando vazio — e `ultima_alteracao`).
+- Resposta (pelo fluxo n8n, `responseFormat: json`): `{"resultado": {"base64": "...", "mime_type": "..."}}`.
+  `DnitClient.download_arquivo` também tolera binário cru e confirma o tipo pelos bytes da imagem.
+- Estrutura do resultado dos tópicos de imagem = chaves dos nós "Limpa Retorno" do n8n (Mapa:
+  `elementos_cartograficos` mapa_brasil/mapa_regional/malha_viaria/corpos_dagua/folha_a4_rm2 e
+  `informacoes_legenda` rodovia/trecho/segmento/extensao/codigo_snv; Diagrama: `pontos_passagem`,
+  `ocorrencias_projeto`, `apresentacao`). O prompt precisa pedir essas mesmas chaves.
+
+**Interpretação da resposta da LLM (2026-09-29)** — `app/processing/llm_resposta.py`, usado por todas as
+estratégias: modo JSON da OpenAI quando o prompt pede JSON; remoção de ```` ```json ````; JSON recortado do meio
+de texto; fallback por regex (`erro_parse: true` + `resposta_ia`). O resultado é sempre um objeto com
+`identificador`, `conforme` e `motivo` — antes, resposta sem JSON virava texto solto. `infos` na estratégia
+`json` é a lista enviada à LLM (antes, texto JSON). O pluviométrico mantém toda a resposta da IA
+(`distribuicao_dias`, `conformidade_in51`, `analise_impacto`, `checklist`), como no n8n.
+- Token inválido: a SUPRA responde **307** para a página inicial (não 401) → `SupraTokenRecusado`.
+
 ---
 
 ## 5. Formato de Entrada e Saída

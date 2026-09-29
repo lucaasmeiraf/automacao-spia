@@ -34,6 +34,29 @@ class OpenAIClient:
         }
         logger.info("OpenAI chat model=%s", body.get("model"))
         resp = await self._client.post(url, json=body, headers=headers)
-        resp.raise_for_status()
+        if resp.is_error:
+            # A OpenAI explica o erro no corpo (ex.: modelo inválido, cota, formato) — sem isso o
+            # log mostraria só "400 Bad Request". O corpo de erro não contém a chave.
+            try:
+                detalhe = resp.json().get("error", {}).get("message") or resp.text[:300]
+            except ValueError:
+                detalhe = resp.text[:300]
+            raise httpx.HTTPStatusError(
+                f"OpenAI HTTP {resp.status_code}: {detalhe}", request=resp.request, response=resp
+            )
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        escolha = data["choices"][0]
+
+        uso = data.get("usage") or {}
+        logger.info(
+            "OpenAI tokens model=%s entrada=%s saida=%s total=%s",
+            data.get("model", body.get("model")),
+            uso.get("prompt_tokens"), uso.get("completion_tokens"), uso.get("total_tokens"),
+        )
+        if escolha.get("finish_reason") == "length":
+            logger.warning(
+                "OpenAI cortou a resposta no limite de max_tokens=%s (model=%s): o JSON pode vir "
+                "incompleto — aumente o max_tokens do tópico.",
+                body.get("max_tokens"), body.get("model"),
+            )
+        return escolha["message"]["content"]

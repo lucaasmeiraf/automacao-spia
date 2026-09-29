@@ -13,6 +13,7 @@ import logging
 
 from app.models import TopicoResultado
 from app.processing.context import ProcessingContext
+from app.processing.llm_resposta import MOTIVO_ERRO_PARSE, interpretar_resposta, pedir_json
 from app.topics import TopicConfig
 
 logger = logging.getLogger(__name__)
@@ -200,25 +201,31 @@ async def processar_pluviometrico(
             ensure_ascii=False,
         )
 
-        body = {
+        body = pedir_json({
             "model": cfg.model,
             "max_tokens": cfg.max_tokens,
             "messages": [
                 {"role": "system", "content": prompt_sistema},
                 {"role": "user", "content": user_content},
             ],
-        }
+        })
 
         # 6. Chama a LLM
         resposta = await ctx.openai.chat(body)
 
-        # 7. Limpa retorno
-        try:
-            parsed = json.loads(resposta)
-        except (json.JSONDecodeError, TypeError):
-            parsed = {}
+        # 7. Limpa retorno — mantém TUDO o que a IA respondeu (distribuicao_dias, conformidade_in51,
+        #    analise_impacto, checklist… como no n8n) e garante os campos mínimos.
+        parsed = interpretar_resposta(
+            resposta, "Controle Pluviométrico",
+            campos_extras=("status_texto", "texto", "percentual_impacto"),
+        )
+        if parsed.get("erro_parse"):
+            parsed["motivo"] = parsed["motivo"] if parsed["motivo"] != MOTIVO_ERRO_PARSE else (
+                "Não foi possível analisar o controle pluviométrico."
+            )
 
         conteudo = {
+            **parsed,
             "identificador": "Controle Pluviométrico",
             "conforme": parsed.get("conforme") or "Atenção",
             "motivo": (

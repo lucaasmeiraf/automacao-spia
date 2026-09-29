@@ -203,9 +203,10 @@ async def test_processar_topico_json_ok():
     )
     resultado = await processar_topico(cfg, "prompt", "contrato", "2025-01-01", "2025-01-31", ctx)
     assert resultado.ok is True
-    # infos não deve conter campo_extra (campos_manter filtra)
-    infos = json.loads(resultado.conteudo["infos"])
-    assert "campo_extra" not in infos[0]
+    # infos vai como lista (não texto JSON) e sem campo_extra (campos_manter filtra)
+    infos = resultado.conteudo["infos"]
+    assert infos == [{"nome_oae": "OAE-1", "tipo_oae": "Ponte"}]
+    assert resultado.conteudo["identificador"] == "oaes"
 
 
 @pytest.mark.asyncio
@@ -220,12 +221,38 @@ async def test_processar_topico_erro_propagado():
 
 @pytest.mark.asyncio
 async def test_processar_topico_json_texto_nao_json_retornado():
-    """Quando a LLM retorna texto puro (não JSON), o resultado deve ser ok=True com string."""
-    cfg = TopicConfig(chave="oaes", endpoint="oaes", estrategia="json")
+    """LLM sem JSON: resultado estruturado (Atenção + motivo), com a resposta crua guardada."""
+    cfg = TopicConfig(chave="oaes", endpoint="oaes", estrategia="json", titulo="OAEs")
     ctx = _make_ctx(
         dnit_resp={"resultado": [{"nome_oae": "OAE-1"}]},
         openai_resp="Não foi possível avaliar.",
     )
     resultado = await processar_topico(cfg, "prompt", "c", "2025-01-01", "2025-01-31", ctx)
     assert resultado.ok is True
-    assert isinstance(resultado.conteudo, str)
+    assert resultado.conteudo["identificador"] == "OAEs"
+    assert resultado.conteudo["conforme"] == "Atenção"
+    assert resultado.conteudo["erro_parse"] is True
+    assert resultado.conteudo["resposta_ia"] == "Não foi possível avaliar."
+    assert resultado.conteudo["infos"] == [{"nome_oae": "OAE-1"}]
+
+
+@pytest.mark.asyncio
+async def test_processar_topico_resposta_em_bloco_markdown():
+    cfg = TopicConfig(chave="rpfo", endpoint="rpfo", estrategia="json")
+    ctx = _make_ctx(
+        dnit_resp={"resultado": [{"x": "1"}]},
+        openai_resp='```json\n{"conforme": "Conforme", "motivo": "ok"}\n```',
+    )
+    resultado = await processar_topico(cfg, "prompt", "c", "2025-01-01", "2025-01-31", ctx)
+    assert resultado.conteudo["conforme"] == "Conforme"
+    assert "erro_parse" not in resultado.conteudo
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prompt, espera_json", [("Responda em JSON.", True), ("Responda em texto.", False)])
+async def test_modo_json_da_openai_so_quando_o_prompt_pede_json(prompt, espera_json):
+    cfg = TopicConfig(chave="historico", endpoint="historico", estrategia="campo", campo_conteudo="texto")
+    ctx = _make_ctx(dnit_resp={"resultado": [{"texto": "abc"}]}, openai_resp='{"conforme":"Conforme"}')
+    await processar_topico(cfg, prompt, "c", "2025-01-01", "2025-01-31", ctx)
+    body = ctx.openai.chat.await_args.args[0]
+    assert ("response_format" in body) is espera_json

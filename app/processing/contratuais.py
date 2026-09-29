@@ -11,6 +11,7 @@ import logging
 
 from app.models import TopicoResultado
 from app.processing.context import ProcessingContext
+from app.processing.llm_resposta import interpretar_resposta, pedir_json
 from app.topics import TopicConfig
 
 logger = logging.getLogger(__name__)
@@ -102,24 +103,19 @@ async def processar_contratuais(
         formatado = _formatar_registro(primeiro)
         user_content = json.dumps(formatado, ensure_ascii=False)
 
-        body = {
+        body = pedir_json({
             "model": cfg.model,
             "max_tokens": cfg.max_tokens,
             "messages": [
                 {"role": "system", "content": prompt_sistema},
                 {"role": "user", "content": user_content},
             ],
-        }
+        })
 
         resposta = await ctx.openai.chat(body)
 
-        try:
-            conteudo = json.loads(resposta)
-        except (json.JSONDecodeError, TypeError):
-            conteudo = resposta
-
-        if isinstance(conteudo, dict):
-            conteudo["infos"] = formatado
+        conteudo = interpretar_resposta(resposta, cfg.nome)
+        conteudo["infos"] = formatado
 
         return TopicoResultado(topico=cfg.chave, ok=True, conteudo=conteudo)
 
