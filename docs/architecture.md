@@ -560,6 +560,8 @@ Documentação Fotográfica) aparecem bloqueados.
   JSON completo e `infos` recolhíveis (textos > 3 000 caracteres, como base64, são encurtados só na exibição);
   no dry-run, modelo, tokens estimados e as mensagens que seriam enviadas. "Copiar JSON" copia a resposta bruta.
 - **Logs:** atualizados a cada 1,5 s durante a execução; depois, filtro "só a última execução" e por nível.
+- **Layout (2026-09-29):** barra de execução fixa no topo + abas Tópicos | Resultado | Logs (a aba aberta fica
+  no hash da URL; ao executar, a tela vai para Resultado). As abas são só apresentação: não mudam dados nem API.
 - **Sessão:** 401 em qualquer chamada volta ao login mantendo rascunhos e alterações pendentes; o navegador
   avisa ao sair da página com alterações não salvas.
 

@@ -7,6 +7,7 @@
   <title>Supra IA · Configuração</title>
   <!-- Sem scripts/estilos inline: a CSP só permite arquivos do próprio servidor. -->
   <link rel="stylesheet" href="/ui/static/app.css">
+  <script src="/ui/static/topicos_relatorio.js" defer></script>
   <script src="/ui/static/config.js" defer></script>
 </head>
 <body>
@@ -43,16 +44,8 @@
     <div id="tela-app" hidden>
       <div id="aviso-config" class="aviso aviso-erro" role="alert" hidden></div>
 
-      <section class="bloco" aria-labelledby="t-topicos">
-        <div class="bloco-cab">
-          <h2 id="t-topicos">Tópicos</h2>
-          <p class="dica">Ligue o que deve rodar. As mudanças ficam pendentes até <strong>Salvar</strong>
-            (gravam <code>config/topics.yaml</code>).</p>
-        </div>
-        <div id="grupos" class="grupos"><p class="vazio">Carregando…</p></div>
-      </section>
-
-      <section class="bloco" aria-labelledby="t-exec">
+      <!-- Execução: fica fora das abas porque o "Só este ▶" dos cartões usa estes campos. -->
+      <section class="bloco bloco-exec" aria-labelledby="t-exec">
         <div class="bloco-cab">
           <h2 id="t-exec">Executar</h2>
           <p class="dica">Roda os tópicos ligados <strong>na tela</strong> (salvos ou não) com os prompts da tela.
@@ -81,7 +74,30 @@
         <p id="exec-erro" class="msg-erro" role="alert" hidden></p>
       </section>
 
-      <section class="bloco" aria-labelledby="t-res">
+      <!-- Abas -->
+      <div class="abas" role="tablist" aria-label="Seções">
+        <button id="aba-topicos" class="aba" type="button" role="tab"
+          aria-controls="painel-topicos" aria-selected="true" data-aba="topicos">Tópicos</button>
+        <button id="aba-resultado" class="aba" type="button" role="tab"
+          aria-controls="painel-resultado" aria-selected="false" tabindex="-1" data-aba="resultado">
+          Resultado <span id="aba-resultado-novo" class="aba-novo" title="Resultado novo" hidden></span></button>
+        <button id="aba-logs" class="aba" type="button" role="tab"
+          aria-controls="painel-logs" aria-selected="false" tabindex="-1" data-aba="logs">Logs do servidor</button>
+      </div>
+
+      <section id="painel-topicos" class="bloco painel" role="tabpanel" aria-labelledby="aba-topicos">
+        <div class="bloco-cab bloco-cab-linha">
+          <div>
+            <h2 id="t-topicos">Tópicos</h2>
+            <p class="dica">Ligue o que deve rodar. As mudanças ficam pendentes até <strong>Salvar</strong>
+              (gravam <code>config/topics.yaml</code>).</p>
+          </div>
+          <button id="btn-novo-relatorio" class="btn" type="button">+ Novo tópico</button>
+        </div>
+        <div id="grupos" class="grupos"><p class="vazio">Carregando…</p></div>
+      </section>
+
+      <section id="painel-resultado" class="bloco painel" role="tabpanel" aria-labelledby="aba-resultado" hidden>
         <div class="bloco-cab bloco-cab-linha">
           <h2 id="t-res">Resultado</h2>
           <button id="btn-copiar" class="btn btn-fantasma" type="button" hidden>Copiar JSON</button>
@@ -89,7 +105,7 @@
         <div id="resultado" class="resultado"><p class="vazio">Nenhuma execução ainda.</p></div>
       </section>
 
-      <section class="bloco" aria-labelledby="t-logs">
+      <section id="painel-logs" class="bloco painel" role="tabpanel" aria-labelledby="aba-logs" hidden>
         <div class="bloco-cab bloco-cab-linha">
           <h2 id="t-logs">Logs do servidor</h2>
           <div class="logs-controles">
@@ -140,6 +156,62 @@
     </div>
     <p class="dica">O texto desta caixa é usado ao clicar em <strong>Executar</strong>, mesmo sem salvar.
       Salvar grava <code>prompts/&lt;chave&gt;.md</code> (vale para o webhook também).</p>
+  </dialog>
+
+  <!-- Novo Prompt (botão "+ Novo tópico") — tema escuro próprio -->
+  <dialog id="dlg-novo-prompt" class="np" aria-labelledby="np-titulo-dlg" aria-describedby="np-sub">
+    <form id="form-novo-prompt" class="np-form" novalidate>
+      <div class="np-cab">
+        <div>
+          <h3 id="np-titulo-dlg">Novo Prompt</h3>
+          <p id="np-sub" class="np-sub">Crie um novo prompt para usar nas análises. Use markdown para formatar.</p>
+        </div>
+        <button id="np-fechar" class="np-x" type="button" aria-label="Fechar">✕</button>
+      </div>
+
+      <div class="np-grade">
+        <div class="np-campo">
+          <label for="np-titulo">Título *</label>
+          <input id="np-titulo" class="np-input" required maxlength="120" autocomplete="off"
+            placeholder="Ex: Análise detalhada de fotos">
+        </div>
+        <div class="np-campo">
+          <label id="np-topico-rotulo" for="np-topico">Tópico do Relatório *</label>
+          <div class="np-select">
+            <button id="np-topico" class="np-input np-select-botao" type="button" role="combobox"
+              aria-haspopup="listbox" aria-expanded="false" aria-controls="np-lista"
+              aria-labelledby="np-topico-rotulo np-topico-texto">
+              <span id="np-topico-texto" class="np-placeholder">Selecione um tópico</span>
+              <span class="np-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="np-popup" hidden>
+              <ul id="np-lista" class="np-lista" role="listbox" aria-labelledby="np-topico-rotulo" tabindex="-1"></ul>
+              <div class="np-mais" aria-hidden="true" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p id="np-aviso" class="np-aviso" hidden></p>
+
+      <div class="np-grade np-edicao">
+        <div class="np-painel">
+          <label class="np-rotulo" for="np-markdown">Markdown</label>
+          <textarea id="np-markdown" class="np-input np-texto" spellcheck="false"
+            placeholder="Escreva o prompt em markdown…&#10;Ex.: # Título · **negrito** · - item de lista · | tabela |"></textarea>
+        </div>
+        <div class="np-painel">
+          <span class="np-rotulo" id="np-preview-rotulo">Preview</span>
+          <div id="np-preview" class="np-input np-preview" role="region" aria-labelledby="np-preview-rotulo"
+            aria-live="off" tabindex="0"></div>
+        </div>
+      </div>
+
+      <p id="np-erro" class="np-erro" role="alert" hidden></p>
+      <div class="np-rodape">
+        <button id="np-cancelar" class="np-btn np-btn-outline" type="button">Cancelar</button>
+        <button id="np-salvar" class="np-btn np-btn-salvar" type="submit" disabled>Salvar</button>
+      </div>
+    </form>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

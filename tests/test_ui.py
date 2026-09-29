@@ -121,3 +121,30 @@ def test_rotas_da_api_usadas_pelo_js_existem():
     for caminho in usadas:
         r = cliente.get(caminho.rstrip("/"))
         assert r.status_code != 404, caminho
+
+
+# ---------------------------------------------------------------------------
+# Modal "Novo Prompt": lista de tópicos do relatório (static/topicos_relatorio.js)
+# ---------------------------------------------------------------------------
+
+TOPICOS_RELATORIO_JS = (STATIC_DIR / "topicos_relatorio.js").read_text(encoding="utf-8")
+
+
+def test_topicos_relatorio_apontam_para_topicos_existentes():
+    from app.topics import TOPICOS_BASE
+
+    chaves = re.findall(r'chave:\s*"([a-z0-9_]+)"', TOPICOS_RELATORIO_JS)
+    assert chaves, "nenhum item ligado a um tópico"
+    assert len(chaves) == len(set(chaves)), "dois itens apontam para o mesmo tópico"
+    assert set(chaves) <= set(TOPICOS_BASE)
+    assert set(chaves) == set(TOPICOS_BASE), "tópico do sistema sem item na lista do relatório"
+
+
+def test_topicos_relatorio_ids_unicos():
+    ids = re.findall(r'\bid:\s*"([^"]+)"', TOPICOS_RELATORIO_JS)
+    assert len(ids) == len(set(ids)) and len(ids) >= 40
+
+
+@pytest.mark.parametrize("proibido", ["innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "fetch(", "Storage"])
+def test_topicos_relatorio_e_so_dados(proibido):
+    assert proibido not in TOPICOS_RELATORIO_JS

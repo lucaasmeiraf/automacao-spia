@@ -4,7 +4,7 @@ Registro vivo do que foi entregue, onde estamos atacando, o que está bloqueado 
 **Atualize ao fim de cada tarefa** (entrada nova no topo do histórico + quadros abaixo).
 Decisões técnicas e detalhes ficam em [`architecture.md`](architecture.md); aqui fica o *status*.
 
-> Última atualização: **2026-09-28**
+> Última atualização: **2026-09-29**
 
 ---
 
@@ -20,10 +20,11 @@ Decisões técnicas e detalhes ficam em [`architecture.md`](architecture.md); aq
 | **Teste de integração real com OpenAI** | ⛔ **Bloqueado** pelo firewall (B1) |
 | Prompts de cada tópico (`prompts/<chave>.md`) | ⚠️ Não existem ainda — ver "Bloqueios" |
 | Tela de configuração (dev) — fase 3 | ✅ `http://localhost:8000/` — validada com dry-run (sem OpenAI) |
+| Criar tópico `campo`/`json` pela tela | ✅ 2026-09-29 — `config/topicos_extras.yaml` |
 | Tela de resultado (dev/homolog) — fase 4 | ⏳ |
 | Grupo 3 (Construtora), Documentação Fotográfica | 💤 Fora do escopo atual |
 
-Testes automatizados: **277 passando** (`pytest`).
+Testes automatizados: **333 passando** (`pytest`).
 
 **Depois da liberação da OpenAI, o fluxo roda pela tela?** Sim. O botão Executar usa exatamente o mesmo
 caminho do webhook (`processing/execucao.py`), já exercitado com SUPRA real, dry-run e smoke test da tela.
@@ -90,6 +91,61 @@ própria tela. O token SUPRA (B2) foi resolvido em 2026-09-28.
 ---
 
 ## Histórico de entregas (mais recente primeiro)
+
+### 2026-09-29 — Excluir prompt pela aba Tópicos
+
+- Cartão de tópico com prompt salvo ganha o botão **Excluir** (2º clique confirma): apaga `prompts/<chave>.md`.
+  O tópico continua na lista, sem prompt (se estiver ligado, volta `ok=false` "sem prompt" ao executar).
+- Backend: `DELETE /api/prompts/{chave}` (admin + CSRF, só dev; idempotente; chave fora de `TOPICS` = 404;
+  logado com o usuário) e `excluir_prompt()` em `app/prompts_store.py`. Testes em `test_prompts_store.py` e
+  `test_admin_api.py`.
+
+### 2026-09-29 — Ajuste de botões na aba Tópicos
+
+- Removido da tela o botão "+ Novo tópico" (formulário de criar tópico) e o formulário dele.
+- O botão "+ Novo Relatório" (modal Novo Prompt) passou a se chamar **"+ Novo tópico"**.
+- Lista "Tópico do Relatório" do modal: removido o grupo "CHAT IA - AIRA" (item 0).
+- A API `POST /api/topicos` e `config/topicos_extras.yaml` continuam no backend (com testes); só não há
+  mais tela para criar tópico. Tópicos já criados continuam aparecendo com o selo "criado na tela".
+
+### 2026-09-29 — Modal "Novo Prompt" (botão "+ Novo Relatório")
+
+- Botão **+ Novo Relatório** na aba Tópicos abre o modal **Novo Prompt** (tema escuro próprio): Título *,
+  Tópico do Relatório * (lista agrupada IN_51 com ~45 itens, rolagem interna, teclado), editor Markdown e
+  **preview em tempo real** lado a lado; Cancelar/Salvar (Salvar só com os três campos preenchidos).
+- A lista fica em `app/ui/static/topicos_relatorio.js`. Só os 14 itens que já são tópicos (`chave`) são
+  selecionáveis; os demais aparecem como "em breve". Salvar grava `prompts/<chave>.md` (`PUT /api/prompts`);
+  se o tópico já tem prompt (ou rascunho no editor), o modal avisa e pede um 2º clique para substituir.
+- O **título não é gravado**: o sistema guarda um prompt por tópico, sem campo de título (vai só no aviso).
+- Preview: conversor Markdown próprio que monta nós DOM (nunca `innerHTML`; links só http/https) — a CSP
+  não permite bibliotecas externas. Testes: `test_ui.py` confere que toda `chave` da lista existe. **333 passando.**
+
+### 2026-09-29 — Criar tópico pela tela ("+ Novo tópico")
+
+- Botão **+ Novo tópico** na aba Tópicos: formulário com os mesmos campos de `TopicConfig` (título, grupo,
+  chave, endpoint SUPRA, modelo, max_tokens, estratégia, campos com HTML, campos a manter/presença, `[]` se
+  vazio) e **"Copiar configuração de"** um tópico existente. Só `campo` e `json` (os demais exigem handler).
+- Backend: `POST /api/topicos` → `config/topicos_extras.yaml` (novo, versionado) via `app/topicos_extras.py`;
+  entra em `TOPICS` na hora e em toda inicialização. Nasce **desligado e sem prompt**; ligar/prompt/"Só este ▶"
+  funcionam como nos demais. Cartão mostra o selo "criado na tela". Como o arquivo está em `config/`, vai para
+  homolog/prod no commit/imagem.
+- Ajustes de suporte: `topics.yaml` agora agrupa por grupo (o tópico novo entra no grupo dele); limite de
+  tópicos de `POST /api/executar` passou a ser dinâmico; `TOPICOS_BASE` = só os do código.
+- Testes: `tests/test_topicos_extras.py` (novo) + casos em `test_admin_api.py` (inclusive sem sessão/CSRF e
+  fora de dev). **325 passando.**
+- Não há editar/excluir pela tela: corrigir um tópico criado = editar `config/topicos_extras.yaml` e reiniciar.
+
+### 2026-09-29 — Tela de configuração organizada em abas (só layout)
+
+- A tela única virou: **barra de execução** fixa no topo (contrato, período, dry-run, Executar — fica fora
+  das abas porque o "Só este ▶" dos cartões usa esses campos) + abas **Tópicos | Resultado | Logs do servidor**.
+- Ao iniciar uma execução a tela vai para a aba Resultado; se o resultado chegar com outra aba aberta, a aba
+  ganha um marcador. A aba aberta fica no endereço (`#resultado`, `#logs`) e sobrevive ao F5. Setas/Home/End
+  trocam de aba pelo teclado. Painel de logs ficou mais alto (acompanha a altura da janela).
+- Nenhuma mudança de API, estado ou regra: todos os IDs e funções existentes foram mantidos; o JS novo só
+  mostra/esconde painéis. `tests/test_ui.py`: 28 passando.
+- Aba Resultado (dry-run): em "Mensagens que seriam enviadas", `system` e `user` ficam **lado a lado**, cada
+  uma com rolagem própria (empilham em tela estreita), já abertas ao terminar a análise.
 
 ### 2026-09-28 — Acesso à SUPRA resolvido + proteção contra 502
 - **Token SUPRA:** diagnosticadas as duas causas (senha trocada; assinatura errada por "secret base64

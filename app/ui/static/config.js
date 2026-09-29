@@ -127,8 +127,7 @@
     estado.usuario = null;
     estado.csrf = null;
     pararPollingLogs();
-    const dlg = $("dlg-prompt");
-    if (dlg.open) dlg.close();
+    for (const id of ["dlg-prompt", "dlg-novo-prompt"]) if ($(id).open) $(id).close();
     mostrarLogin("Sua sessão expirou. Entre novamente — rascunhos de prompts e alterações não salvas foram mantidos.");
   }
 
@@ -252,6 +251,8 @@
 
     const selo = el("span");
     const pendente = el("span", { class: "selo-pendente", text: "alterado" });
+    const excluir = el("button", { class: "btn btn-fantasma btn-mini btn-excluir", type: "button", text: "Excluir",
+      title: `Excluir o prompt salvo (prompts/${t.chave}.md)`, onclick: (ev) => excluirPrompt(t.chave, ev.currentTarget) });
     const card = el("article", { class: "cartao" },
       el("div", { class: "cartao-cab" },
         el("h4", { text: t.titulo }),
@@ -260,12 +261,14 @@
       el("div", { class: "cartao-meta" },
         `${t.estrategia} · ${t.modelo}`,
         t.custo === "alto" ? el("span", { class: "custo-alto", title: "Modelo de visão: custo alto por chamada", text: "$$$" }) : null,
+        t.no_codigo === false ? el("span", { class: "selo selo-neutro", title: "Definido em config/topicos_extras.yaml", text: "criado na tela" }) : null,
       ),
       el("div", { class: "cartao-endpoint", text: `GET …/secao_ws/${t.endpoint}` }),
       el("div", { class: "cartao-rodape" },
         selo,
         pendente,
         el("span", { class: "espaco" }),
+        excluir,
         el("button", { class: "btn btn-fantasma btn-mini", type: "button", text: "Prompt",
           title: "Ver/editar o prompt", onclick: () => abrirPrompt(t.chave) }),
         el("button", { class: "btn btn-fantasma btn-mini", type: "button", text: "Só este ▶",
@@ -273,7 +276,7 @@
           onclick: (ev) => executar([t.chave], ev.currentTarget) }),
       ),
     );
-    estado.refs.set(t.chave, { card, input, selo, pendente });
+    estado.refs.set(t.chave, { card, input, selo, pendente, excluir });
     atualizarCartao(t.chave);
     return card;
   }
@@ -286,6 +289,7 @@
     r.card.classList.toggle("ativo", ativo);
     r.card.classList.toggle("pendente", estado.salvo.get(chave) !== ativo);
     r.pendente.hidden = estado.salvo.get(chave) === ativo;
+    r.excluir.hidden = !estado.prompts.get(chave);
 
     let classe = "selo selo-neutro", texto = "Sem prompt", titulo = "Crie um prompt para este tópico rodar";
     if (estado.rascunhos.has(chave)) {
@@ -400,9 +404,401 @@
     }
   }
 
+  /** Apaga prompts/<chave>.md (2º clique confirma). O tópico continua na lista, sem prompt. */
+  async function excluirPrompt(chave, btn) {
+    if (!confirmar(btn, "Confirmar exclusão")) return;
+    btn.disabled = true;
+    try {
+      const resp = await api("DELETE", `/api/prompts/${encodeURIComponent(chave)}`);
+      estado.prompts.set(chave, resp.conteudo);
+      atualizarCartao(chave);
+      atualizarResumoExecucao();
+      const t = info(chave);
+      toast(`Prompt de "${t ? t.titulo : chave}" excluído.` +
+        (estado.tela.get(chave) ? " O tópico está ligado: sem prompt, voltará com erro ao executar." : ""));
+    } catch (e) {
+      toast(`Não foi possível excluir o prompt: ${e.message}`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   function restaurarPrompt() {
     $("dlg-texto").value = estado.prompts.get(estado.dlgChave) || "";
     atualizarStatusPrompt();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Markdown → DOM (preview do "Novo Prompt"). Só nós de elemento/texto: nunca HTML cru.
+  // Cobre títulos, parágrafos, **negrito**, *itálico*, ~~riscado~~, `código`, blocos ```,
+  // listas (aninhadas por recuo), citações, linha horizontal, tabelas (GFM) e links http(s).
+  // ---------------------------------------------------------------------------
+  const MD_INLINE = [
+    { re: /`([^`]+)`/, tag: "code", literal: true },
+    { re: /\*\*(.+?)\*\*|__(.+?)__/, tag: "strong" },
+    { re: /~~(.+?)~~/, tag: "del" },
+    { re: /\*(?!\s)(.+?)\*|(?<!\w)_(?!\s)(.+?)_(?!\w)/, tag: "em" },
+    { re: /\[([^\]]+)\]\(([^)\s]+)\)/, tag: "a" },
+  ];
+
+  function mdInline(texto) {
+    const nos = [];
+    let resto = texto;
+    while (resto) {
+      let melhor = null;
+      for (const regra of MD_INLINE) {
+        const m = regra.re.exec(resto);
+        if (m && (!melhor || m.index < melhor.m.index)) melhor = { regra, m };
+      }
+      if (!melhor) { nos.push(resto); break; }
+      const { regra, m } = melhor;
+      if (m.index) nos.push(resto.slice(0, m.index));
+      const miolo = m[1] ?? m[2] ?? "";
+      if (regra.literal) nos.push(el(regra.tag, { text: miolo }));
+      else if (regra.tag === "a") {
+        nos.push(/^https?:\/\//i.test(m[2])
+          ? el("a", { href: m[2], target: "_blank", rel: "noopener noreferrer" }, mdInline(m[1]))
+          : el("span", {}, mdInline(m[1])));
+      } else nos.push(el(regra.tag, {}, mdInline(miolo)));
+      resto = resto.slice(m.index + m[0].length);
+    }
+    return nos;
+  }
+
+  const MD_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  const MD_SEP_TABELA = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+  const recuo = (linha) => linha.match(/^\s*/)[0].replace(/\t/g, "    ").length;
+  const celulas = (linha) => linha.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
+  /** Lista a partir de linhas[i] (mesmo recuo); devolve [elemento, próxima linha]. */
+  function mdLista(linhas, i) {
+    const base = recuo(linhas[i]);
+    const ordenada = /\d/.test(MD_ITEM.exec(linhas[i])[2]);
+    const lista = el(ordenada ? "ol" : "ul");
+    let li = null;
+    while (i < linhas.length) {
+      const linha = linhas[i];
+      if (!linha.trim()) {
+        const prox = linhas[i + 1];
+        if (prox !== undefined && MD_ITEM.test(prox) && recuo(prox) >= base) { i += 1; continue; }
+        break;
+      }
+      const m = MD_ITEM.exec(linha);
+      const r = recuo(linha);
+      if (m && r === base && /\d/.test(m[2]) !== ordenada) break; // troca de tipo = lista nova
+      if (m && r === base) {
+        li = el("li", {}, mdInline(m[3]));
+        lista.append(li);
+        i += 1;
+      } else if (m && r > base && li) {
+        const [sub, j] = mdLista(linhas, i);
+        li.append(sub);
+        i = j;
+      } else if (!m && r > base && li) {
+        li.append(" ", ...mdInline(linha.trim()));
+        i += 1;
+      } else break;
+    }
+    return [lista, i];
+  }
+
+  function mdBlocos(texto) {
+    const linhas = texto.replace(/\r\n?/g, "\n").split("\n");
+    const frag = document.createDocumentFragment();
+    let i = 0;
+    const inicioDeBloco = (l, prox) => /^\s*(```|#{1,6}\s|>)/.test(l) || MD_ITEM.test(l) ||
+      /^\s*([-*_])(\s*\1){2,}\s*$/.test(l) || (l.includes("|") && prox !== undefined && MD_SEP_TABELA.test(prox));
+
+    while (i < linhas.length) {
+      const linha = linhas[i];
+      if (!linha.trim()) { i += 1; continue; }
+
+      if (/^\s*```/.test(linha)) {
+        const codigo = [];
+        i += 1;
+        while (i < linhas.length && !/^\s*```/.test(linhas[i])) codigo.push(linhas[i++]);
+        i += 1;
+        frag.append(el("pre", {}, el("code", { text: codigo.join("\n") })));
+        continue;
+      }
+      const titulo = /^\s*(#{1,6})\s+(.*?)\s*#*\s*$/.exec(linha);
+      if (titulo) { frag.append(el(`h${titulo[1].length}`, {}, mdInline(titulo[2]))); i += 1; continue; }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(linha)) { frag.append(el("hr")); i += 1; continue; }
+      if (/^\s*>/.test(linha)) {
+        const citacao = [];
+        while (i < linhas.length && /^\s*>/.test(linhas[i])) citacao.push(linhas[i++].replace(/^\s*>\s?/, ""));
+        frag.append(el("blockquote", {}, mdBlocos(citacao.join("\n"))));
+        continue;
+      }
+      if (linha.includes("|") && linhas[i + 1] !== undefined && MD_SEP_TABELA.test(linhas[i + 1])) {
+        const alinh = celulas(linhas[i + 1]).map((c) => (c.endsWith(":") ? (c.startsWith(":") ? "center" : "right") : null));
+        const classe = (k) => (alinh[k] ? `al-${alinh[k]}` : null);
+        const thead = el("thead", {}, el("tr", {}, celulas(linha).map((c, k) => el("th", { class: classe(k) }, mdInline(c)))));
+        const tbody = el("tbody");
+        i += 2;
+        while (i < linhas.length && linhas[i].trim() && linhas[i].includes("|")) {
+          tbody.append(el("tr", {}, celulas(linhas[i++]).map((c, k) => el("td", { class: classe(k) }, mdInline(c)))));
+        }
+        frag.append(el("div", { class: "md-tabela" }, el("table", {}, thead, tbody)));
+        continue;
+      }
+      if (MD_ITEM.test(linha)) { const [lista, j] = mdLista(linhas, i); frag.append(lista); i = j; continue; }
+
+      const paragrafo = [];
+      while (i < linhas.length && linhas[i].trim() && !(paragrafo.length && inicioDeBloco(linhas[i], linhas[i + 1]))) {
+        paragrafo.push(linhas[i++].trim());
+      }
+      const p = el("p");
+      paragrafo.forEach((l, k) => { if (k) p.append(el("br")); p.append(...mdInline(l)); });
+      frag.append(p);
+    }
+    return frag;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Novo Prompt (botão "+ Novo tópico"): título + tópico do relatório + markdown com preview.
+  // Salvar grava prompts/<chave>.md do tópico escolhido (PUT /api/prompts/{chave}).
+  // ---------------------------------------------------------------------------
+  const np = { topicoId: null, aberto: false, ativo: -1, opcoes: [], salvando: false, ignorarCancel: false, quadro: 0 };
+
+  function itemRelatorio(id) {
+    for (const g of window.TOPICOS_RELATORIO || []) for (const it of g.itens) if (it.id === id) return it;
+    return null;
+  }
+
+  function construirListaRelatorio() {
+    const ul = $("np-lista");
+    limpar(ul);
+    np.opcoes = [];
+    (window.TOPICOS_RELATORIO || []).forEach((g, gi) => {
+      if (gi) ul.append(el("li", { class: "np-divisor", role: "separator" }));
+      const idGrupo = `np-grupo-${gi}`;
+      const opcoes = g.itens.map((it) => {
+        const disponivel = !!(it.chave && info(it.chave));
+        const li = el("li", {
+          id: `np-op-${it.id.replace(/\W/g, "_")}`, class: "np-opcao", role: "option",
+          "aria-selected": "false", "aria-disabled": disponivel ? null : "true",
+          title: disponivel ? `Grava prompts/${it.chave}.md` : "Este tópico ainda não existe no sistema",
+        }, el("span", { text: it.label }), disponivel ? null : el("span", { class: "np-embreve", text: "em breve" }));
+        const indice = np.opcoes.length;
+        np.opcoes.push({ it, li, disponivel });
+        li.addEventListener("mousedown", (ev) => ev.preventDefault()); // foco fica no combobox
+        li.addEventListener("click", () => { if (disponivel) { selecionarTopicoRelatorio(it.id); fecharListaRelatorio(); } });
+        li.addEventListener("mousemove", () => { if (disponivel && np.ativo !== indice) ativarOpcao(indice, false); });
+        return li;
+      });
+      ul.append(el("li", { role: "presentation" },
+        el("div", { id: idGrupo, class: "np-grupo", text: g.grupo, "aria-hidden": "true" }),
+        el("ul", { role: "group", "aria-labelledby": idGrupo }, opcoes),
+      ));
+    });
+  }
+
+  function atualizarIndicadorLista() {
+    const ul = $("np-lista");
+    document.querySelector(".np-mais").hidden = ul.scrollTop + ul.clientHeight >= ul.scrollHeight - 4;
+  }
+
+  function ativarOpcao(indice, rolar = true) {
+    np.opcoes.forEach((o, k) => o.li.classList.toggle("ativo", k === indice));
+    np.ativo = indice;
+    const o = np.opcoes[indice];
+    if (o) {
+      $("np-topico").setAttribute("aria-activedescendant", o.li.id);
+      if (rolar) o.li.scrollIntoView({ block: "nearest" });
+    } else $("np-topico").removeAttribute("aria-activedescendant");
+    atualizarIndicadorLista();
+  }
+
+  function moverOpcao(passo) {
+    const n = np.opcoes.length;
+    let k = np.ativo;
+    for (let tentativas = 0; tentativas < n; tentativas++) {
+      k = k < 0 ? (passo > 0 ? 0 : n - 1) : (k + passo + n) % n;
+      if (np.opcoes[k].disponivel) { ativarOpcao(k); return; }
+    }
+  }
+
+  function extremoOpcao(fim) {
+    const lista = fim ? [...np.opcoes.keys()].reverse() : [...np.opcoes.keys()];
+    const k = lista.find((i) => np.opcoes[i].disponivel);
+    if (k !== undefined) ativarOpcao(k);
+  }
+
+  function abrirListaRelatorio() {
+    if (np.aberto) return;
+    np.aberto = true;
+    document.querySelector(".np-popup").hidden = false;
+    $("np-topico").setAttribute("aria-expanded", "true");
+    const sel = np.opcoes.findIndex((o) => o.it.id === np.topicoId);
+    if (sel >= 0) ativarOpcao(sel); else { np.ativo = -1; moverOpcao(1); }
+    atualizarIndicadorLista();
+  }
+
+  function fecharListaRelatorio() {
+    if (!np.aberto) return;
+    np.aberto = false;
+    document.querySelector(".np-popup").hidden = true;
+    $("np-topico").setAttribute("aria-expanded", "false");
+    $("np-topico").removeAttribute("aria-activedescendant");
+  }
+
+  function selecionarTopicoRelatorio(id) {
+    np.topicoId = id;
+    const it = itemRelatorio(id);
+    for (const o of np.opcoes) o.li.setAttribute("aria-selected", String(o.it.id === id));
+    const texto = $("np-topico-texto");
+    texto.textContent = it ? it.label : "Selecione um tópico";
+    texto.classList.toggle("np-placeholder", !it);
+
+    // Salvar substitui o prompt do tópico: avisa se já existe prompt salvo ou rascunho no editor.
+    const aviso = $("np-aviso");
+    const partes = [];
+    if (it && it.chave) {
+      const salvo = estado.prompts.get(it.chave);
+      if (salvo) partes.push(`Este tópico já tem um prompt salvo (${salvo.length.toLocaleString("pt-BR")} caracteres): salvar vai substituí-lo.`);
+      if (estado.rascunhos.has(it.chave)) partes.push("O rascunho não salvo deste tópico no editor de prompt será descartado.");
+    }
+    aviso.textContent = partes.join(" ");
+    aviso.hidden = !partes.length;
+    resetarConfirmacao($("np-salvar"));
+    atualizarSalvarNovoPrompt();
+  }
+
+  function onTeclaTopicoRelatorio(ev) {
+    const teclas = {
+      ArrowDown: () => (np.aberto ? moverOpcao(1) : abrirListaRelatorio()),
+      ArrowUp: () => (np.aberto ? moverOpcao(-1) : abrirListaRelatorio()),
+      Home: () => np.aberto && extremoOpcao(false),
+      End: () => np.aberto && extremoOpcao(true),
+      Enter: () => {
+        if (!np.aberto) { abrirListaRelatorio(); return; }
+        const o = np.opcoes[np.ativo];
+        if (o && o.disponivel) selecionarTopicoRelatorio(o.it.id);
+        fecharListaRelatorio();
+      },
+      Escape: () => {
+        if (!np.aberto) return false;
+        fecharListaRelatorio();
+        np.ignorarCancel = true; // o Esc fecha só a lista, não o modal
+        setTimeout(() => { np.ignorarCancel = false; }, 0);
+        return true;
+      },
+    };
+    teclas[" "] = teclas.Enter;
+    if (ev.key === "Tab") { fecharListaRelatorio(); return; }
+    const acao = teclas[ev.key];
+    if (!acao) return;
+    if (acao() === false) return;
+    ev.preventDefault();
+    if (ev.key === "Escape") ev.stopPropagation();
+  }
+
+  function renderPreviewNovoPrompt() {
+    cancelAnimationFrame(np.quadro);
+    np.quadro = requestAnimationFrame(() => {
+      const caixa = $("np-preview");
+      const texto = $("np-markdown").value;
+      limpar(caixa);
+      if (!texto.trim()) caixa.append(el("p", { class: "np-vazio", text: "O preview aparecerá aqui..." }));
+      else caixa.append(mdBlocos(texto));
+    });
+  }
+
+  function atualizarSalvarNovoPrompt() {
+    const completo = $("np-titulo").value.trim() && np.topicoId && $("np-markdown").value.trim();
+    $("np-salvar").disabled = np.salvando || !completo;
+  }
+
+  function erroNovoPrompt(msg) {
+    const p = $("np-erro");
+    p.textContent = msg || "";
+    p.hidden = !msg;
+  }
+
+  function abrirNovoPrompt() {
+    construirListaRelatorio();
+    $("np-markdown").maxLength = estado.maxPrompt;
+    resetarNovoPrompt();
+    $("dlg-novo-prompt").showModal();
+    $("np-titulo").focus();
+  }
+
+  function resetarNovoPrompt() {
+    $("form-novo-prompt").reset();
+    fecharListaRelatorio();
+    selecionarTopicoRelatorio(null);
+    erroNovoPrompt("");
+    renderPreviewNovoPrompt();
+  }
+
+  /** Grava o prompt do tópico escolhido. Rejeita (exceção) em caso de erro. */
+  async function onSaveNovoPrompt({ titulo, topicoId, topicoLabel, conteudoMarkdown }) {
+    const it = itemRelatorio(topicoId);
+    if (!it || !it.chave || !info(it.chave)) throw new Error("Este tópico ainda não existe no sistema.");
+    const resp = await api("PUT", `/api/prompts/${encodeURIComponent(it.chave)}`, { conteudo: conteudoMarkdown });
+    estado.prompts.set(it.chave, resp.conteudo);
+    estado.rascunhos.delete(it.chave);
+    atualizarCartao(it.chave);
+    atualizarResumoExecucao();
+    toast(`Prompt "${titulo}" salvo em ${topicoLabel}.`);
+  }
+
+  async function salvarNovoPrompt(ev) {
+    ev.preventDefault();
+    const btn = $("np-salvar");
+    if (btn.disabled) return;
+    erroNovoPrompt("");
+    if (!$("np-aviso").hidden && !confirmar(btn, "Confirmar: substituir")) return;
+
+    const it = itemRelatorio(np.topicoId);
+    np.salvando = true;
+    btn.classList.add("salvando");
+    btn.textContent = "Salvando…";
+    atualizarSalvarNovoPrompt();
+    try {
+      await onSaveNovoPrompt({
+        titulo: $("np-titulo").value.trim(),
+        topicoId: np.topicoId,
+        topicoLabel: it ? it.label : "",
+        conteudoMarkdown: $("np-markdown").value,
+      });
+      $("dlg-novo-prompt").close();
+    } catch (e) {
+      erroNovoPrompt(`Não foi possível salvar: ${e.message}`);
+    } finally {
+      np.salvando = false;
+      btn.classList.remove("salvando");
+      btn.textContent = "Salvar";
+      atualizarSalvarNovoPrompt();
+    }
+  }
+
+  function ligarNovoPrompt() {
+    const dlg = $("dlg-novo-prompt");
+    $("btn-novo-relatorio").addEventListener("click", abrirNovoPrompt);
+    $("form-novo-prompt").addEventListener("submit", salvarNovoPrompt);
+    $("np-fechar").addEventListener("click", () => dlg.close());
+    $("np-cancelar").addEventListener("click", () => dlg.close());
+    dlg.addEventListener("close", resetarNovoPrompt);
+    dlg.addEventListener("cancel", (ev) => {
+      if (np.ignorarCancel || np.aberto || np.salvando) { ev.preventDefault(); fecharListaRelatorio(); }
+    });
+    // Clique no overlay (fora da caixa): o alvo é o próprio <dialog>, que não tem padding.
+    dlg.addEventListener("click", (ev) => { if (ev.target === dlg && !np.salvando) dlg.close(); });
+
+    $("np-topico").addEventListener("click", () => (np.aberto ? fecharListaRelatorio() : abrirListaRelatorio()));
+    $("np-topico").addEventListener("keydown", onTeclaTopicoRelatorio);
+    $("np-lista").addEventListener("scroll", atualizarIndicadorLista);
+    document.addEventListener("mousedown", (ev) => {
+      if (np.aberto && !document.querySelector(".np-select").contains(ev.target)) fecharListaRelatorio();
+    });
+
+    $("np-titulo").addEventListener("input", atualizarSalvarNovoPrompt);
+    $("np-markdown").addEventListener("input", () => {
+      atualizarSalvarNovoPrompt();
+      renderPreviewNovoPrompt();
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -629,13 +1025,16 @@
           text: `${ch.modelo} · ~${ch.tokens_texto_estimados.toLocaleString("pt-BR")} tokens de entrada (texto) · ` +
                 `${ch.caracteres_texto.toLocaleString("pt-BR")} caracteres · max_tokens ${ch.max_tokens}` +
                 (ch.imagens ? ` · ${ch.imagens} imagem(ns)` : "") }));
-        const det = el("details", {}, el("summary", { text: "Mensagens que seriam enviadas" }));
+        // Cada mensagem (system, user…) numa coluna com rolagem própria, lado a lado.
+        const grade = el("div", { class: "msgs-grade" });
         for (const m of ch.mensagens) {
-          det.append(el("div", { class: "msg-papel", text: m.role }));
           const texto = typeof m.conteudo === "string" ? m.conteudo : jsonLegivel(m.conteudo);
-          det.append(el("pre", { class: "json", text: texto }));
+          grade.append(el("div", { class: "msg" },
+            el("div", { class: "msg-papel", text: m.role }),
+            el("pre", { class: "json", text: texto }),
+          ));
         }
-        item.append(det);
+        item.append(el("details", { open: true }, el("summary", { text: "Mensagens que seriam enviadas" }), grade));
       }
       return item;
     }
@@ -715,6 +1114,54 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Abas (só layout: mostram/escondem painéis, não mudam dados nem chamam a API)
+  // ---------------------------------------------------------------------------
+  const ABAS = ["topicos", "resultado", "logs"];
+
+  function abaAtiva() {
+    return ABAS.find((a) => !$(`painel-${a}`).hidden) || "topicos";
+  }
+
+  function mostrarAba(nome, focar = false) {
+    if (!ABAS.includes(nome)) nome = "topicos";
+    for (const a of ABAS) {
+      const ativa = a === nome;
+      const aba = $(`aba-${a}`);
+      aba.setAttribute("aria-selected", String(ativa));
+      aba.tabIndex = ativa ? 0 : -1;
+      $(`painel-${a}`).hidden = !ativa;
+    }
+    if (nome === "resultado") $("aba-resultado-novo").hidden = true;
+    if (nome === "logs") { const caixa = $("logs"); caixa.scrollTop = caixa.scrollHeight; }
+    if (focar) $(`aba-${nome}`).focus();
+    // Hash na URL: F5 volta na mesma aba (sem rolar a página).
+    history.replaceState(null, "", nome === "topicos" ? location.pathname + location.search : `#${nome}`);
+  }
+
+  function ligarAbas() {
+    for (const a of ABAS) {
+      const aba = $(`aba-${a}`);
+      aba.addEventListener("click", () => mostrarAba(a));
+      aba.addEventListener("keydown", (ev) => {
+        const i = ABAS.indexOf(a);
+        let alvo = null;
+        if (ev.key === "ArrowRight") alvo = ABAS[(i + 1) % ABAS.length];
+        else if (ev.key === "ArrowLeft") alvo = ABAS[(i - 1 + ABAS.length) % ABAS.length];
+        else if (ev.key === "Home") alvo = ABAS[0];
+        else if (ev.key === "End") alvo = ABAS[ABAS.length - 1];
+        if (alvo) { ev.preventDefault(); mostrarAba(alvo, true); }
+      });
+    }
+    // Uma execução começando leva à aba Resultado; se o resultado chegar com outra aba aberta,
+    // a aba Resultado ganha um marcador de "novo".
+    new MutationObserver(() => {
+      if ($("resultado").querySelector(".carregando")) mostrarAba("resultado");
+      else if (abaAtiva() !== "resultado") $("aba-resultado-novo").hidden = false;
+    }).observe($("resultado"), { childList: true });
+    mostrarAba(location.hash.slice(1));
+  }
+
+  // ---------------------------------------------------------------------------
   // Eventos
   // ---------------------------------------------------------------------------
   function ligarEventos() {
@@ -746,6 +1193,8 @@
 
   async function iniciar() {
     ligarEventos();
+    ligarAbas();
+    ligarNovoPrompt();
     restaurarFormulario();
     try {
       const sessao = await api("GET", "/api/auth/me");
