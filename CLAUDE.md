@@ -112,8 +112,9 @@ Está em `app/clients/dnit.py`.
 
 ### Cliente SUPRA
 
-`DnitClient` limita requisições simultâneas e repete 502/503/504 (a SUPRA derruba rajadas de chamadas).
-Não remova isso; toda chamada nova à SUPRA deve passar por `_get_json`. O documento
+`DnitClient` limita requisições simultâneas e repete 502/503/504 e conexões derrubadas (a SUPRA derruba
+rajadas de chamadas). Não remova isso; toda chamada nova à SUPRA deve passar por `_get` (ou `_get_json`).
+Redirecionamento (307) da SUPRA = token recusado (`SupraTokenRecusado`). O documento
 `Endpoint_AI_relatorio_contexto.docx` contém a `encryption_key` da SUPRA: está no `.gitignore` — nunca
 o versione nem copie a chave para código, docs ou logs.
 

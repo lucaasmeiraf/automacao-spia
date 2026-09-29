@@ -8,14 +8,19 @@ typo `periodo_incio`), headers e o JSON devolvido.
 from __future__ import annotations
 
 import asyncio
+import base64
 
 import httpx
 import pytest
 
-from app.clients.dnit import DnitClient
+from app.clients.dnit import ArquivoInvalido, DnitClient, SupraTokenRecusado
 from tests.helpers import fazer_settings
 
 BASE = "https://supra.teste/index_cgcont_common.php/cgcont/ai"
+
+# Só as assinaturas importam para a detecção do tipo.
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 32
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
 def _cliente(handler, **kw) -> tuple[DnitClient, httpx.AsyncClient]:
@@ -74,13 +79,104 @@ async def test_resposta_status_false_passa_adiante_sem_nova_tentativa():
 
 @pytest.mark.asyncio
 async def test_download_arquivo_mesmos_parametros():
-    handler, chamadas = _roteiro((200, {"status": True, "resultado": "base64..."}))
+    handler, chamadas = _roteiro((200, {"status": True, "resultado": base64.b64encode(PNG).decode()}))
     dnit, http = _cliente(handler)
     async with http:
         await dnit.download_arquivo("00 00493/2013", "mapa.png")
     (req,) = chamadas
     assert req.url.path.endswith("/arquivo/download_ws")
     assert dict(req.url.params) == {"contrato": "00 00493/2013", "nome_arquivo": "mapa.png"}
+    assert req.headers["token"] == "TOKEN-TESTE"
+
+
+# ---------------------------------------------------------------------------
+# Download: formatos aceitos (o formato real do download_ws ainda não foi confirmado)
+# ---------------------------------------------------------------------------
+
+def _download(resposta: httpx.Response):
+    async def handler(req: httpx.Request) -> httpx.Response:
+        return resposta
+    return _cliente(handler)
+
+
+@pytest.mark.asyncio
+async def test_download_binario_vira_base64_no_python():
+    dnit, http = _download(httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"}))
+    async with http:
+        arquivo = await dnit.download_arquivo("c", "573706884_795.jpg")
+    assert arquivo.conteudo == JPEG
+    assert arquivo.mime_type == "image/jpeg"
+    assert arquivo.data_uri == "data:image/jpeg;base64," + base64.b64encode(JPEG).decode()
+
+
+@pytest.mark.asyncio
+async def test_download_binario_com_content_type_generico_e_detectado_pelos_bytes():
+    dnit, http = _download(httpx.Response(200, content=PNG, headers={"content-type": "application/octet-stream"}))
+    async with http:
+        arquivo = await dnit.download_arquivo("c", "x")
+    assert arquivo.mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_download_no_formato_do_n8n():
+    # Nó "Download das Imagens" (responseFormat=json) + "Payload Mapa de Situação": resultado.base64/mime_type.
+    corpo = {"status": True, "resultado": {"base64": base64.b64encode(JPEG).decode(), "mime_type": "image/jpeg"}}
+    dnit, http = _download(httpx.Response(200, json=corpo))
+    async with http:
+        arquivo = await dnit.download_arquivo("c", "573706884_795.jpg")
+    assert arquivo.conteudo == JPEG
+    assert arquivo.data_uri == "data:image/jpeg;base64," + corpo["resultado"]["base64"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corpo", [
+    {"status": True, "resultado": base64.b64encode(JPEG).decode()},
+    {"status": True, "resultado": {"base64": base64.b64encode(JPEG).decode(), "mime_type": "image/png"}},
+    {"status": True, "resultado": [{"arquivo": "data:image/jpeg;base64," + base64.b64encode(JPEG).decode()}]},
+])
+async def test_download_json_com_base64(corpo):
+    dnit, http = _download(httpx.Response(200, json=corpo))
+    async with http:
+        arquivo = await dnit.download_arquivo("c", "x")
+    assert arquivo.conteudo == JPEG
+    assert arquivo.mime_type == "image/jpeg"  # vale o que os bytes dizem, não o mime_type informado
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resposta, trecho", [
+    (httpx.Response(200, json={"status": False, "mensagem": "Arquivo não encontrado."}), "Arquivo não encontrado."),
+    (httpx.Response(200, text="<html>erro</html>", headers={"content-type": "text/html"}), "text/html"),
+    (httpx.Response(200, json={"status": True, "resultado": base64.b64encode(b"%PDF-1.4 ...").decode()}), "não é JPEG"),
+    (httpx.Response(200, json={"status": True, "resultado": "!!!não é base64!!!"}), "base64"),
+])
+async def test_download_invalido_levanta_erro_claro(resposta, trecho):
+    dnit, http = _download(resposta)
+    async with http:
+        with pytest.raises(ArquivoInvalido, match=trecho):
+            await dnit.download_arquivo("c", "x")
+
+
+# ---------------------------------------------------------------------------
+# Token recusado: a SUPRA redireciona (307) para a página inicial
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metodo", ["secao", "download"])
+async def test_redirecionamento_vira_token_recusado_sem_nova_tentativa(metodo):
+    chamadas = []
+
+    async def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        return httpx.Response(307, headers={"location": "https://supra.dnit.gov.br/"})
+
+    dnit, http = _cliente(handler)
+    async with http:
+        with pytest.raises(SupraTokenRecusado, match="DNIT_TOKEN"):
+            if metodo == "secao":
+                await dnit.buscar_secao("mapa_situacao", "c", "a", "b")
+            else:
+                await dnit.download_arquivo("c", "x")
+    assert len(chamadas) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +213,38 @@ async def test_outros_erros_falham_na_hora_como_antes(status):
         with pytest.raises(httpx.HTTPStatusError):
             await dnit.buscar_secao("oaes", "c", "a", "b")
     assert len(chamadas) == 1
+
+
+@pytest.mark.asyncio
+async def test_conexao_derrubada_e_repetida_e_depois_funciona():
+    chamadas = []
+
+    async def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        if len(chamadas) < 3:
+            raise httpx.ConnectError("[Errno 104] Connection reset by peer", request=req)
+        return httpx.Response(200, json={"status": True, "resultado": []})
+
+    dnit, http = _cliente(handler, dnit_retries=2)
+    async with http:
+        dados = await dnit.buscar_secao("historico", "c", "a", "b")
+    assert dados == {"status": True, "resultado": []}
+    assert len(chamadas) == 3
+
+
+@pytest.mark.asyncio
+async def test_conexao_derrubada_persistente_falha_depois_das_tentativas():
+    chamadas = []
+
+    async def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        raise httpx.ReadError("Connection reset by peer", request=req)
+
+    dnit, http = _cliente(handler, dnit_retries=2)
+    async with http:
+        with pytest.raises(httpx.ReadError):
+            await dnit.buscar_secao("rpfo", "c", "a", "b")
+    assert len(chamadas) == 3
 
 
 @pytest.mark.asyncio
