@@ -101,8 +101,10 @@ cp .env.example .env
 docker compose up --build
 ```
 
-API disponível em `http://localhost:8000` (`GET /health`). A documentação interativa (`/docs`) fica
+API disponível em `http://localhost:8010` (`GET /health`). A documentação interativa (`/docs`) fica
 **desligada**; só liga com `ENV=dev` e `ENABLE_DOCS=true`.
+
+Na VPS (Docker + acesso por túnel SSH): ver [`docs/deploy-vps.md`](docs/deploy-vps.md).
 
 ## Configurando o .env
 

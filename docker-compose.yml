@@ -3,15 +3,17 @@ services:
     build: .
     container_name: supra-ia
     restart: unless-stopped
+    # Roda como lucas:projetos para que prompts/config salvos pela tela fiquem editáveis/commitáveis no host.
+    user: "1000:1002"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8010:8000"
     env_file:
       - .env
     # Em DEV, descomente para que edições em config/ e prompts/ valham sem rebuild.
     # Em homolog/prod NÃO monte: eles usam o que foi versionado e empacotado na imagem.
-    # volumes:
-    #   - ./config:/app/config
-    #   - ./prompts:/app/prompts
+    volumes:
+      - ./config:/app/config
+      - ./prompts:/app/prompts
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
