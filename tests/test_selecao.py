@@ -83,8 +83,12 @@ def test_topics_yaml_do_repositorio_e_valido_e_cobre_todos_os_topicos():
     import yaml
 
     from app.topic_state import interpretar
+    from app.topicos_extras import carregar
 
     raiz = Path(__file__).resolve().parent.parent
+    # Como no create_app: os tópicos criados pela tela (versionados) também contam. O conftest
+    # devolve TOPICS ao estado "só código" depois do teste.
+    carregar(str(raiz / "config" / "topicos_extras.yaml"))
     dados = yaml.safe_load((raiz / "config" / "topics.yaml").read_text(encoding="utf-8"))
     estado = interpretar(dados)
     assert estado.erro is None

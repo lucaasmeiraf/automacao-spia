@@ -92,6 +92,23 @@ própria tela. O token SUPRA (B2) foi resolvido em 2026-09-28.
 
 ## Histórico de entregas (mais recente primeiro)
 
+### 2026-09-29 — Todos os tópicos da lista "Tópico do Relatório" viram cards
+- 26 tópicos novos em `config/topicos_extras.yaml` (estratégia `json`, nascem desligados); os 40 itens
+  de `topicos_relatorio.js` agora têm `chave`. Cards ordenados pela lista; excluir virou ícone de lixeira
+  ao lado do interruptor.
+- Endpoint SUPRA **confirmado** (fluxo n8n): `atividades_supervisora` (→ `atividades_supervisora_descricao`),
+  `info_contratuais_construtora`, `termos_aditivos_construtora`, `apostilas_construtora` (os dois últimos
+  copiam a config dos equivalentes da Supervisora).
+- `documentacao_fotografica`: endpoint real, mas no fluxo genérico só manda os metadados à LLM — as
+  imagens precisam de handler próprio (`gpt-4o`).
+- **Endpoint provisório (= chave), A CONFIRMAR com a SUPRA** — dá erro ao executar até ser corrigido:
+  `mobilizacao_supervisora`, `mobilizacao_construtora`, `atividades_construtora`,
+  `acompanhamento_fisico_financeiro`, `acompanhamento_financeiro`, `acompanhamento_fisico`,
+  `analise_cronogramas`, `resumo_avanco_fisico`, `componente_ambiental`, `gestao_qualidade`,
+  `ensaios_laboratorio_construtora`, `ensaios_laboratorio_supervisora`, `pvegq`, `nao_conformidades`,
+  `gestao_juridica`, `gestao_riscos`, `atas_correspondencias`, `gestao_tratativas`, `conclusao`,
+  `termo_encerramento`, `anexos`.
+
 ### 2026-09-29 — Excluir prompt pela aba Tópicos
 
 - Cartão de tópico com prompt salvo ganha o botão **Excluir** (2º clique confirma): apaga `prompts/<chave>.md`.

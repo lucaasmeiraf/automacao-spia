@@ -6,6 +6,7 @@
 # Tópico ausente deste arquivo = desligado. Use SEMPRE true/false (sem aspas).
 # Este arquivo é relido a cada requisição: não precisa reiniciar o servidor.
 # Se ele estiver inválido, NENHUM tópico roda (a API responde 503) — nunca liga tudo.
+# Também é gravado pela API de configuração (ENV=dev): edições manuais de comentário se perdem.
 #
 # Atenção a custo: mapa_situacao e diagrama_ocorrencias usam gpt-4o com visão (bem mais caro).
 
@@ -27,3 +28,33 @@ topicos:
   paralisacao_reinicio: true
   apostilas_supervisora: true
   controle_pluviometrico: true
+  mobilizacao_supervisora: false
+  atividades_supervisora: false
+
+  # Grupo 3 — Apresentação Construtora
+  info_contratuais_construtora: false
+  termos_aditivos_construtora: false
+  apostilas_construtora: false
+  mobilizacao_construtora: false
+  atividades_construtora: false
+
+  # Grupo 4 — Demais Seções
+  acompanhamento_fisico_financeiro: false
+  acompanhamento_financeiro: false
+  acompanhamento_fisico: false
+  analise_cronogramas: false
+  resumo_avanco_fisico: false
+  documentacao_fotografica: false
+  componente_ambiental: false
+  gestao_qualidade: false
+  ensaios_laboratorio_construtora: false
+  ensaios_laboratorio_supervisora: false
+  pvegq: false
+  nao_conformidades: false
+  gestao_juridica: false
+  gestao_riscos: false
+  atas_correspondencias: false
+  gestao_tratativas: false
+  conclusao: false
+  termo_encerramento: false
+  anexos: false

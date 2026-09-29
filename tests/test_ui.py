@@ -131,13 +131,16 @@ TOPICOS_RELATORIO_JS = (STATIC_DIR / "topicos_relatorio.js").read_text(encoding=
 
 
 def test_topicos_relatorio_apontam_para_topicos_existentes():
+    from app.topicos_extras import _ler_arquivo
     from app.topics import TOPICOS_BASE
 
+    # Tópicos do código + os criados pela tela (config/topicos_extras.yaml, versionado).
+    extras = _ler_arquivo(str(UI_DIR.parents[1] / "config" / "topicos_extras.yaml"))
     chaves = re.findall(r'chave:\s*"([a-z0-9_]+)"', TOPICOS_RELATORIO_JS)
     assert chaves, "nenhum item ligado a um tópico"
     assert len(chaves) == len(set(chaves)), "dois itens apontam para o mesmo tópico"
-    assert set(chaves) <= set(TOPICOS_BASE)
-    assert set(chaves) == set(TOPICOS_BASE), "tópico do sistema sem item na lista do relatório"
+    assert set(chaves) <= set(TOPICOS_BASE) | set(extras)
+    assert set(TOPICOS_BASE) <= set(chaves), "tópico do sistema sem item na lista do relatório"
 
 
 def test_topicos_relatorio_ids_unicos():

@@ -209,8 +209,15 @@
     limpar(raiz);
     estado.refs.clear();
 
+    // Cartões na ordem da lista "Tópico do Relatório"; o que não estiver lá vai para o fim do grupo.
+    const ordem = new Map();
+    for (const g of window.TOPICOS_RELATORIO || []) {
+      for (const it of g.itens) if (it.chave && !ordem.has(it.chave)) ordem.set(it.chave, ordem.size);
+    }
+    const topicos = [...estado.topicos].sort((a, b) => (ordem.get(a.chave) ?? Infinity) - (ordem.get(b.chave) ?? Infinity));
+
     const grupos = new Map();
-    for (const t of estado.topicos) {
+    for (const t of topicos) {
       const g = t.grupo || "Outros";
       if (!grupos.has(g)) grupos.set(g, []);
       grupos.get(g).push(t);

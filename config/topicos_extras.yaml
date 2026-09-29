@@ -1,0 +1,341 @@
+# Tópicos criados pela tela de configuração (ENV=dev) — ver app/topicos_extras.py.
+#
+# Complementa app/topics.py: mesmos campos de TopicConfig, só as estratégias "campo" e "json".
+# Ligar/desligar continua em config/topics.yaml (tópico novo nasce desligado); o prompt fica em
+# prompts/<chave>.md. Regravado pela API a cada tópico criado: edições manuais de comentário se
+# perdem, e editar à mão só vale depois de reiniciar o servidor.
+topicos:
+  mobilizacao_supervisora:
+    titulo: Relação de Mobilização - Supervisora
+    grupo: Apresentação Supervisora
+    endpoint: mobilizacao_supervisora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  atividades_supervisora:
+    titulo: Atividades Executadas - Supervisora
+    grupo: Apresentação Supervisora
+    endpoint: atividades_supervisora_descricao
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  info_contratuais_construtora:
+    titulo: Informações Contratuais - Construtora
+    grupo: Apresentação Construtora
+    endpoint: info_contratuais_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  termos_aditivos_construtora:
+    titulo: Aditivos - Construtora
+    grupo: Apresentação Construtora
+    endpoint: termos_aditivos_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields:
+    - objeto
+    - motivacao
+    - descricao
+    - observacao
+    campos_manter: []
+    empty_as_array: true
+    campos_presenca:
+    - numero_termo
+    - numero
+    - num_termo
+  apostilas_construtora:
+    titulo: Apostilas - Construtora
+    grupo: Apresentação Construtora
+    endpoint: apostilas_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 800
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields:
+    - objeto
+    - reajustamento
+    - compensacao
+    - penalizacao
+    - observacao
+    campos_manter:
+    - numero_apostila
+    - data_assinatura
+    - objeto
+    - reajustamento
+    - compensacao
+    - penalizacao
+    - observacao
+    empty_as_array: true
+    campos_presenca:
+    - numero_apostila
+    - numero
+    - num_apostila
+  mobilizacao_construtora:
+    titulo: Relação de Mobilização - Construtora
+    grupo: Apresentação Construtora
+    endpoint: mobilizacao_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  atividades_construtora:
+    titulo: Atividades Executadas - Construtora
+    grupo: Apresentação Construtora
+    endpoint: atividades_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  acompanhamento_fisico_financeiro:
+    titulo: Acompanhamento Físico-Financeiro
+    grupo: Demais Seções
+    endpoint: acompanhamento_fisico_financeiro
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  acompanhamento_financeiro:
+    titulo: Acompanhamento Financeiro
+    grupo: Demais Seções
+    endpoint: acompanhamento_financeiro
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  acompanhamento_fisico:
+    titulo: Acompanhamento Físico
+    grupo: Demais Seções
+    endpoint: acompanhamento_fisico
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  analise_cronogramas:
+    titulo: Análise Crítica dos Cronogramas
+    grupo: Demais Seções
+    endpoint: analise_cronogramas
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  resumo_avanco_fisico:
+    titulo: Resumo de Avanço Físico
+    grupo: Demais Seções
+    endpoint: resumo_avanco_fisico
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  documentacao_fotografica:
+    titulo: Documentação Fotográfica
+    grupo: Demais Seções
+    endpoint: documentacao_fotografica
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  componente_ambiental:
+    titulo: Componente Ambiental
+    grupo: Demais Seções
+    endpoint: componente_ambiental
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  gestao_qualidade:
+    titulo: Gestão da Qualidade
+    grupo: Demais Seções
+    endpoint: gestao_qualidade
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  ensaios_laboratorio_construtora:
+    titulo: Ensaios de Laboratório - Construtora
+    grupo: Demais Seções
+    endpoint: ensaios_laboratorio_construtora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  ensaios_laboratorio_supervisora:
+    titulo: Ensaios de Laboratório - Supervisora
+    grupo: Demais Seções
+    endpoint: ensaios_laboratorio_supervisora
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  pvegq:
+    titulo: PVEGQ
+    grupo: Demais Seções
+    endpoint: pvegq
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  nao_conformidades:
+    titulo: Registros de Não Conformidades (RNC)
+    grupo: Demais Seções
+    endpoint: nao_conformidades
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  gestao_juridica:
+    titulo: Gestão Jurídica, Garantias e Seguros
+    grupo: Demais Seções
+    endpoint: gestao_juridica
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  gestao_riscos:
+    titulo: Gestão de Riscos e Interferências
+    grupo: Demais Seções
+    endpoint: gestao_riscos
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  atas_correspondencias:
+    titulo: Atas e Correspondências
+    grupo: Demais Seções
+    endpoint: atas_correspondencias
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  gestao_tratativas:
+    titulo: Gestão de Tratativas
+    grupo: Demais Seções
+    endpoint: gestao_tratativas
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  conclusao:
+    titulo: Conclusão e Comentários
+    grupo: Demais Seções
+    endpoint: conclusao
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  termo_encerramento:
+    titulo: Termo de Encerramento
+    grupo: Demais Seções
+    endpoint: termo_encerramento
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
+  anexos:
+    titulo: Anexos
+    grupo: Demais Seções
+    endpoint: anexos
+    modelo: gpt-4o-mini
+    max_tokens: 1200
+    estrategia: json
+    campo_conteudo: resumo
+    html_fields: []
+    campos_manter: []
+    empty_as_array: false
+    campos_presenca: []
