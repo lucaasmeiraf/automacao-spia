@@ -182,7 +182,10 @@ input, select, textarea {
 .cartao-rodape { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .cartao-rodape .espaco { flex: 1; }
 .selo-pendente { font-size: 11px; color: var(--primaria); font-weight: 600; }
-.btn-fantasma.btn-excluir { color: var(--erro); }
+.btn-fantasma.btn-excluir:not(.btn-perigo) { color: var(--erro); }
+.cartao-controles { display: flex; align-items: center; gap: 6px; flex: none; }
+.btn-icone { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; }
+.btn-icone svg { display: block; }
 
 .custo-alto {
   font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px;

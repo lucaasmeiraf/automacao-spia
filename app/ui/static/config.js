@@ -258,12 +258,16 @@
 
     const selo = el("span");
     const pendente = el("span", { class: "selo-pendente", text: "alterado" });
-    const excluir = el("button", { class: "btn btn-fantasma btn-mini btn-excluir", type: "button", text: "Excluir",
-      title: `Excluir o prompt salvo (prompts/${t.chave}.md)`, onclick: (ev) => excluirPrompt(t.chave, ev.currentTarget) });
+    const excluir = el("button", { class: "btn btn-fantasma btn-icone btn-excluir", type: "button",
+      title: `Excluir o prompt salvo (prompts/${t.chave}.md)`, "aria-label": `Excluir o prompt de ${t.titulo}`,
+      onclick: (ev) => excluirPrompt(t.chave, ev.currentTarget) }, iconeLixeira());
     const card = el("article", { class: "cartao" },
       el("div", { class: "cartao-cab" },
         el("h4", { text: t.titulo }),
-        el("label", { class: "interruptor", title: "Ligar/desligar" }, input, el("span")),
+        el("div", { class: "cartao-controles" },
+          excluir,
+          el("label", { class: "interruptor", title: "Ligar/desligar" }, input, el("span")),
+        ),
       ),
       el("div", { class: "cartao-meta" },
         `${t.estrategia} · ${t.modelo}`,
@@ -275,7 +279,6 @@
         selo,
         pendente,
         el("span", { class: "espaco" }),
-        excluir,
         el("button", { class: "btn btn-fantasma btn-mini", type: "button", text: "Prompt",
           title: "Ver/editar o prompt", onclick: () => abrirPrompt(t.chave) }),
         el("button", { class: "btn btn-fantasma btn-mini", type: "button", text: "Só este ▶",
@@ -286,6 +289,10 @@
     estado.refs.set(t.chave, { card, input, selo, pendente, excluir });
     atualizarCartao(t.chave);
     return card;
+  }
+
+  function iconeLixeira() {
+    return $("tpl-lixeira").content.firstElementChild.cloneNode(true);
   }
 
   function atualizarCartao(chave) {
@@ -853,9 +860,17 @@
   function confirmar(btn, texto) {
     if (btn.dataset.confirmar === "1") { resetarConfirmacao(btn); return true; }
     btn.dataset.confirmar = "1";
-    btn.dataset.textoOriginal = btn.textContent;
     btn.classList.add("btn-perigo");
-    btn.textContent = texto;
+    if (btn.classList.contains("btn-icone")) {
+      // Botão só com ícone: o aviso vai no title/aria-label para não apagar o SVG.
+      btn.dataset.textoOriginal = btn.title;
+      btn.dataset.rotuloOriginal = btn.getAttribute("aria-label") || "";
+      btn.title = texto;
+      btn.setAttribute("aria-label", texto);
+    } else {
+      btn.dataset.textoOriginal = btn.textContent;
+      btn.textContent = texto;
+    }
     clearTimeout(timersConfirmacao.get(btn));
     timersConfirmacao.set(btn, setTimeout(() => resetarConfirmacao(btn), 6000));
     return false;
@@ -865,7 +880,13 @@
     if (btn.dataset.confirmar !== "1") return;
     clearTimeout(timersConfirmacao.get(btn));
     btn.classList.remove("btn-perigo");
-    btn.textContent = btn.dataset.textoOriginal;
+    if (btn.classList.contains("btn-icone")) {
+      btn.title = btn.dataset.textoOriginal;
+      btn.setAttribute("aria-label", btn.dataset.rotuloOriginal);
+      delete btn.dataset.rotuloOriginal;
+    } else {
+      btn.textContent = btn.dataset.textoOriginal;
+    }
     delete btn.dataset.confirmar;
     delete btn.dataset.textoOriginal;
   }
