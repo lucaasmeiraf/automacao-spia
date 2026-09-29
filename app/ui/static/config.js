@@ -992,6 +992,38 @@
     return el("details", {}, el("summary", { text: titulo }), el("pre", { class: "json", text: texto }));
   }
 
+  // Só formatos raster: SVG pode carregar conteúdo ativo e não é o que a SUPRA devolve.
+  const RE_IMAGEM_BASE64 = /^data:image\/(png|jpeg|gif|webp|bmp);base64,[A-Za-z0-9+/=\s]+$/;
+
+  /** Procura, em qualquer profundidade do JSON, textos que sejam imagens `data:image/...;base64,...`. */
+  function imagensBase64(valor, caminho = "", achadas = []) {
+    if (typeof valor === "string") {
+      if (valor.startsWith("data:image/") && RE_IMAGEM_BASE64.test(valor)) achadas.push({ caminho, uri: valor });
+    } else if (Array.isArray(valor)) {
+      valor.forEach((v, i) => imagensBase64(v, `${caminho}[${i}]`, achadas));
+    } else if (valor && typeof valor === "object") {
+      for (const [k, v] of Object.entries(valor)) imagensBase64(v, caminho ? `${caminho}.${k}` : k, achadas);
+    }
+    return achadas;
+  }
+
+  /** Mostra as imagens base64 encontradas no resultado (nenhuma = null, nada é adicionado). */
+  function blocoImagens(valor) {
+    const imagens = imagensBase64(valor);
+    if (!imagens.length) return null;
+    return el("details", { open: true },
+      el("summary", { text: imagens.length === 1 ? "Imagem analisada" : `Imagens analisadas (${imagens.length})` }),
+      el("div", { class: "res-imagens" }, imagens.map(({ caminho, uri }) => {
+        const tipo = uri.slice(5, uri.indexOf(";"));
+        const kb = Math.round((uri.length - uri.indexOf(",") - 1) * 3 / 4 / 1024);
+        return el("figure", { class: "res-imagem" },
+          el("img", { src: uri, alt: `Imagem em ${caminho}`, loading: "lazy" }),
+          el("figcaption", { text: `${caminho} · ${tipo} · ~${kb.toLocaleString("pt-BR")} KB` }),
+        );
+      })),
+    );
+  }
+
   function renderResultado(resp) {
     const raiz = $("resultado");
     limpar(raiz);
@@ -1046,7 +1078,11 @@
     if (c && typeof c === "object" && !Array.isArray(c) && c.dry_run) {
       if (!c.chamadas_llm.length) {
         item.append(el("p", { class: "res-chamada", text: c.observacao || "Sem chamada à LLM." }));
-        if (c.resultado !== undefined) item.append(blocoJson("Resultado sem LLM", c.resultado));
+        if (c.resultado !== undefined) {
+          const imagens = blocoImagens(c.resultado);
+          if (imagens) item.append(imagens);
+          item.append(blocoJson("Resultado sem LLM", c.resultado));
+        }
       }
       for (const ch of c.chamadas_llm) {
         item.append(el("p", { class: "res-chamada",
@@ -1069,6 +1105,8 @@
 
     if (c && typeof c === "object" && !Array.isArray(c)) {
       if (c.motivo) item.append(el("p", { class: "res-motivo", text: String(c.motivo) }));
+      const imagens = blocoImagens(c);
+      if (imagens) item.append(imagens);
       const { infos, ...resto } = c;
       item.append(blocoJson("Resposta completa (JSON)", resto));
       if (infos !== undefined) item.append(blocoJson("Dados enviados à LLM (infos)", infos));
