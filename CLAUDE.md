@@ -31,6 +31,7 @@ app/
 ├── models.py            # Pydantic: RelatorioRequest / TopicoResultado / RelatorioResponse
 ├── topics.py            # DEFINIÇÃO dos tópicos: TOPICS = {chave: TopicConfig(...)}
 ├── topic_state.py       # ATIVAÇÃO: lê/grava config/topics.yaml (cache por mtime, falha segura)
+├── topicos_extras.py    # tópicos campo/json criados pela tela: config/topicos_extras.yaml → TOPICS
 ├── prompts_store.py     # prompts/<chave>.md lê/grava (só chaves conhecidas; anti path traversal)
 ├── arquivos.py          # escrever_atomico (temporário + os.replace)
 ├── log_buffer.py        # BufferDeLogs (painel de logs, só dev) + em_execucao() (id de execução nos logs)
@@ -50,6 +51,7 @@ app/
 scripts/                 # python -m scripts.gerar_hash_senha | gerar_chave (uso manual, não é do app)
 pytest.ini               # pythonpath=. — `pytest` puro funciona
 config/topics.yaml       # ATIVAÇÃO dos tópicos (true/false) — versionado
+config/topicos_extras.yaml # tópicos criados pela tela (POST /api/topicos) — versionado; lido no create_app
 prompts/<chave>.md       # prompt de sistema por tópico (o payload sobrepõe)
 tests/                   # pytest, arquivos planos: test_<assunto>.py
 docs/architecture.md     # documentação de arquitetura e decisões
@@ -87,6 +89,10 @@ Não existem `src/`, `BaseProcessor` nem `tests/processors/` — não os crie.
 3. Escreva testes em `tests/` (ver "Testes Obrigatórios").
 4. Rode o teste de integração em dev antes de marcar como pronto.
 5. Atualize `docs/architecture.md` (§7) e o README.
+
+Tópico simples (`campo`/`json`) também pode ser criado pela tela ("+ Novo tópico" → `POST /api/topicos`):
+vai para `config/topicos_extras.yaml` e entra em `TOPICS` sem código. `TOPICOS_BASE` (`app/topics.py`) guarda
+só os do código. Tópicos com handler próprio continuam sendo criados em código, pelo roteiro acima.
 
 ### Variáveis de Ambiente
 

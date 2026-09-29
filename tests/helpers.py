@@ -14,7 +14,11 @@ SENHA_ADMIN = "senha-de-teste-bem-longa"
 
 def fazer_settings(**kw) -> Settings:
     """Settings que ignora o .env do desenvolvedor (`_env_file=None`)."""
-    base = dict(openai_api_key="x", dnit_token="y", webhook_api_key=CHAVE_WEBHOOK)
+    base = dict(
+        openai_api_key="x", dnit_token="y", webhook_api_key=CHAVE_WEBHOOK,
+        # Nunca lê o config/topicos_extras.yaml do repositório (arquivo ausente = só os do código).
+        topicos_extras_file="/nao-existe/topicos_extras.yaml",
+    )
     base.update(kw)
     return Settings(_env_file=None, **base)
 

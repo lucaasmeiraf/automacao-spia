@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.prompts_store import PROMPT_MAX_CARACTERES, carregar_prompt, salvar_prompt
+from app.prompts_store import PROMPT_MAX_CARACTERES, carregar_prompt, excluir_prompt, salvar_prompt
 
 
 @pytest.mark.asyncio
@@ -91,3 +91,25 @@ async def test_salvar_prompt_vazio_ou_gigante(tmp_path, texto):
     with pytest.raises(ValueError):
         await salvar_prompt("justificativa", str(tmp_path), texto)
     assert not (tmp_path / "justificativa.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_excluir_prompt_apaga_o_arquivo(tmp_path):
+    await salvar_prompt("justificativa", str(tmp_path), "texto")
+    assert await excluir_prompt("justificativa", str(tmp_path)) is True
+    assert not (tmp_path / "justificativa.md").exists()
+    assert await carregar_prompt("justificativa", str(tmp_path)) is None
+    assert await excluir_prompt("justificativa", str(tmp_path)) is False  # idempotente
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chave", ["nao_existe", "../segredo", "..", "README"])
+async def test_excluir_prompt_chave_invalida_nunca_apaga(tmp_path, chave):
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    alvo = tmp_path / "segredo.md"
+    alvo.write_text("x", encoding="utf-8")
+    (prompts / "README.md").write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError):
+        await excluir_prompt(chave, str(prompts))
+    assert alvo.exists() and (prompts / "README.md").exists()

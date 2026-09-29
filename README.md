@@ -31,6 +31,7 @@ app/
 ├── models.py                 # Validação de entrada e saída (Pydantic v2)
 ├── topics.py                 # DEFINIÇÃO dos 14 tópicos (como funcionam)
 ├── topic_state.py            # ATIVAÇÃO: config/topics.yaml (o "fio" do n8n): lê e grava
+├── topicos_extras.py         # tópicos campo/json criados pela tela (config/topicos_extras.yaml)
 ├── prompts_store.py          # prompts/<chave>.md: lê e grava
 ├── arquivos.py               # gravação atômica (temporário + os.replace)
 ├── log_buffer.py             # últimas linhas de log em memória (painel de logs, só dev)
@@ -148,6 +149,8 @@ login (`POST /api/auth/login`); as escritas exigem também o header `X-CSRF-Toke
 | Rota | Função |
 |---|---|
 | `GET /api/topicos` / `PUT /api/topicos` | lista / liga e desliga tópicos (`{"topicos": {"rpfo": true}}`), grava `config/topics.yaml` |
+| `DELETE /api/prompts/{chave}` | apaga `prompts/<chave>.md` (o tópico fica sem prompt) |
+| `POST /api/topicos` | cria um tópico `campo`/`json` (desligado, sem prompt), grava `config/topicos_extras.yaml` |
 | `GET /api/prompts`, `GET/PUT /api/prompts/{chave}` | lê / salva `prompts/<chave>.md` (`{"conteudo": "..."}`) |
 | `POST /api/executar` | roda como o webhook; extras: `"topicos": ["rpfo"]` (só esses, ignora o YAML) e `"dry_run": true` (busca os dados e monta o payload, **sem chamar a OpenAI**) |
 | `GET /api/logs?nivel=INFO&execucao=<id>` | últimas linhas de log; `execucao_id` vem na resposta do executar |

@@ -27,6 +27,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import topicos_extras
 from app.clients.dnit import DnitClient
 from app.clients.nominatim import NominatimClient
 from app.clients.openai_client import OpenAIClient
@@ -72,6 +73,8 @@ def _avisos_de_seguranca(settings: Settings) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     docs_ligados = settings.env == "dev" and settings.enable_docs
+    # Tópicos criados pela tela (config/topicos_extras.yaml) entram em TOPICS junto com os do código.
+    topicos_extras.carregar(settings.topicos_extras_file)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

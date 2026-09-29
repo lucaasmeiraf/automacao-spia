@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # Ativação dos tópicos (o "fio" do n8n) e prompts por tópico.
     topics_file: str = "config/topics.yaml"
     prompts_dir: str = "prompts"
+    # Tópicos criados pela tela (campo/json), somados aos de app/topics.py.
+    topicos_extras_file: str = "config/topicos_extras.yaml"
 
     # --- Segurança ---
     # Chave que o SISTEMA CHAMADOR envia no header `X-API-Key` do POST /webhook/relatorio.

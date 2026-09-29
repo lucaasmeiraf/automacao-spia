@@ -9,11 +9,13 @@ from __future__ import annotations
 import pytest
 
 from app.security.passwords import gerar_hash
+from app.topicos_extras import aplicar
 from tests.helpers import SENHA_ADMIN
 
 _VARS_QUE_INTERFEREM = (
     "ENV", "WEBHOOK_API_KEY", "ADMIN_USERS", "COOKIE_SECURE", "ENABLE_DOCS",
     "SESSION_IDLE_MINUTES", "SESSION_MAX_HOURS", "TOPICS_FILE", "PROMPTS_DIR",
+    "TOPICOS_EXTRAS_FILE",
 )
 
 
@@ -21,6 +23,14 @@ _VARS_QUE_INTERFEREM = (
 def _ambiente_limpo(monkeypatch):
     for nome in _VARS_QUE_INTERFEREM:
         monkeypatch.delenv(nome, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _topicos_so_do_codigo():
+    """Tópicos criados num teste (TOPICS é global) não vazam para o próximo."""
+    aplicar({})
+    yield
+    aplicar({})
 
 
 @pytest.fixture(scope="session")

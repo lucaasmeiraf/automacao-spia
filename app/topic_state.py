@@ -66,7 +66,9 @@ def interpretar(dados: object, conhecidos: frozenset[str] | None = None) -> Esta
                 erro=f"valor inválido para '{chave}': use true ou false (recebido {valor!r})"
             )
         if chave not in conhecidos:
-            avisos.append(f"tópico '{chave}' não existe em app/topics.py (ignorado)")
+            avisos.append(
+                f"tópico '{chave}' não existe em app/topics.py nem em topicos_extras.yaml (ignorado)"
+            )
             continue
         if valor:
             ativos.add(chave)
@@ -108,6 +110,11 @@ def _ler_estado_sync(caminho: str) -> EstadoTopicos:
     return estado
 
 
+def esquecer_cache() -> None:
+    """Descarta os estados em cache (ex.: surgiu um tópico novo, que muda o que é "conhecido")."""
+    _cache.clear()
+
+
 async def ler_estado(caminho: str) -> EstadoTopicos:
     """Lê o estado de ativação (I/O em thread, para não bloquear o event loop)."""
     return await asyncio.to_thread(_ler_estado_sync, caminho)
@@ -130,18 +137,19 @@ _CABECALHO_YAML = """\
 
 def gerar_yaml(ativos: frozenset[str] | set[str]) -> str:
     """Conteúdo completo de topics.yaml: todos os tópicos de TOPICS, na ordem, por grupo."""
-    linhas = [_CABECALHO_YAML, "topicos:"]
-    numero_grupo = 0
-    grupo_atual: str | None = None
+    # Agrupa pela ordem da 1ª aparição do grupo: um tópico criado pela tela (fica no fim de TOPICS)
+    # entra no grupo dele, sem repetir o cabeçalho.
+    grupos: dict[str, list[str]] = {}
     for chave, cfg in TOPICS.items():
-        if cfg.grupo != grupo_atual:
-            grupo_atual = cfg.grupo
-            numero_grupo += 1
-            if numero_grupo > 1:
-                linhas.append("")
-            if grupo_atual:
-                linhas.append(f"  # Grupo {numero_grupo} — {grupo_atual}")
-        linhas.append(f"  {chave}: {'true' if chave in ativos else 'false'}")
+        grupos.setdefault(cfg.grupo, []).append(chave)
+
+    linhas = [_CABECALHO_YAML, "topicos:"]
+    for numero_grupo, (grupo, chaves) in enumerate(grupos.items(), start=1):
+        if numero_grupo > 1:
+            linhas.append("")
+        if grupo:
+            linhas.append(f"  # Grupo {numero_grupo} — {grupo}")
+        linhas.extend(f"  {chave}: {'true' if chave in ativos else 'false'}" for chave in chaves)
     return "\n".join(linhas) + "\n"
 
 

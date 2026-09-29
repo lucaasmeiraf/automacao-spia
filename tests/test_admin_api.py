@@ -28,6 +28,9 @@ ROTAS_ESCRITA = [
     ("put", "/api/topicos", {"json": {"topicos": {"rpfo": True}}}),
     ("put", "/api/prompts/justificativa", {"json": {"conteudo": "novo"}}),
     ("post", "/api/executar", {"json": BODY}),
+    ("delete", "/api/prompts/justificativa", {}),
+    ("post", "/api/topicos", {"json": {"chave": "novo_topico", "titulo": "Novo", "grupo": "G",
+                                       "endpoint": "novo_topico"}}),
 ]
 
 
@@ -67,12 +70,14 @@ class Ambiente:
             self.topicos.write_text(yaml_texto, encoding="utf-8")
         self.prompts = tmp_path / "prompts"
         self.prompts.mkdir(exist_ok=True)
+        self.extras = tmp_path / "topicos_extras.yaml"
         settings = fazer_settings(
             env=env,
             admin_users={USUARIO: hash_admin},
             cookie_secure=False,
             topics_file=str(self.topicos),
             prompts_dir=str(self.prompts),
+            topicos_extras_file=str(self.extras),
         )
         self.app = fazer_app(settings)
         self.app.state.openai = AsyncMock()
@@ -114,6 +119,7 @@ def test_escrita_sem_sessao_401_e_nada_muda(amb, chamadas, metodo, rota, kw):
     assert getattr(amb.cliente, metodo)(rota, **kw).status_code == 401
     assert amb.topicos.read_text(encoding="utf-8") == antes
     assert not (amb.prompts / "justificativa.md").exists()
+    assert not amb.extras.exists() and "novo_topico" not in TOPICS
     assert chamadas == []
 
 
@@ -126,6 +132,7 @@ def test_escrita_sem_csrf_valido_403_e_nada_muda(amb, chamadas, metodo, rota, kw
     assert getattr(amb.cliente, metodo)(rota, headers=headers, **kw).status_code == 403
     assert amb.topicos.read_text(encoding="utf-8") == antes
     assert not (amb.prompts / "justificativa.md").exists()
+    assert not amb.extras.exists() and "novo_topico" not in TOPICS
     assert chamadas == []
 
 
@@ -225,6 +232,100 @@ def test_alteracao_de_topicos_e_logada_com_usuario(amb, caplog):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/topicos (criar tópico pela tela)
+# ---------------------------------------------------------------------------
+
+NOVO = {
+    "chave": "sumario", "titulo": "Sumário", "grupo": "Relatório Principal", "endpoint": "secao_sumario",
+    "estrategia": "campo", "campo_conteudo": "resumo", "html_fields": ["resumo"],
+}
+
+
+def test_criar_topico_nasce_desligado_e_aparece_na_lista(amb):
+    amb.login()
+    antes = amb.topicos.read_text(encoding="utf-8")
+    r = amb.escrever("post", "/api/topicos", json=NOVO)
+    assert r.status_code == 201
+    por_chave = {t["chave"]: t for t in r.json()["topicos"]}
+    assert list(por_chave)[-1] == "sumario"
+    t = por_chave["sumario"]
+    assert (t["titulo"], t["grupo"], t["endpoint"], t["estrategia"]) == (
+        "Sumário", "Relatório Principal", "secao_sumario", "campo")
+    assert t["ativo"] is False and t["tem_prompt"] is False and t["no_codigo"] is False
+    assert t["html_fields"] == ["resumo"] and t["modelo"] == "gpt-4o-mini"
+    assert por_chave["justificativa"]["no_codigo"] is True
+    assert amb.topicos.read_text(encoding="utf-8") == antes  # ativação intacta
+    assert "sumario" in yaml.safe_load(amb.extras.read_text(encoding="utf-8"))["topicos"]
+
+
+def test_topico_criado_sobrevive_a_reinicializacao(amb, tmp_path, hash_admin):
+    amb.login()
+    assert amb.escrever("post", "/api/topicos", json=NOVO).status_code == 201
+    outra = Ambiente(tmp_path, hash_admin).login()  # mesma pasta = mesmos arquivos
+    chaves = [t["chave"] for t in outra.cliente.get("/api/topicos").json()["topicos"]]
+    assert "sumario" in chaves
+
+
+def test_topico_criado_liga_recebe_prompt_e_executa(amb):
+    amb.login()
+    amb.escrever("post", "/api/topicos", json=NOVO)
+    assert amb.escrever("put", "/api/topicos", json={"topicos": {"sumario": True}}).status_code == 200
+    assert yaml.safe_load(amb.topicos.read_text(encoding="utf-8"))["topicos"]["sumario"] is True
+    assert amb.escrever("put", "/api/prompts/sumario", json={"conteudo": "Avalie."}).status_code == 200
+
+    amb.app.state.dnit.buscar_secao = AsyncMock(return_value=[{"resumo": "<p>Texto do sumário</p>"}])
+    r = amb.escrever("post", "/api/executar", json={**BODY, "topicos": ["sumario"], "dry_run": True})
+    assert r.status_code == 200
+    amb.app.state.dnit.buscar_secao.assert_awaited_once()
+    assert amb.app.state.dnit.buscar_secao.await_args.args[0] == "secao_sumario"
+    (chamada,) = r.json()["topicos"][0]["conteudo"]["chamadas_llm"]
+    assert chamada["mensagens"] == [
+        {"role": "system", "conteudo": "Avalie."},
+        {"role": "user", "conteudo": "Texto do sumário"},
+    ]
+
+
+@pytest.mark.parametrize("chave", ["justificativa", "sumario"])
+def test_criar_topico_com_chave_repetida_409(amb, chave):
+    amb.login()
+    amb.escrever("post", "/api/topicos", json=NOVO)
+    antes = amb.extras.read_text(encoding="utf-8")
+    r = amb.escrever("post", "/api/topicos", json={**NOVO, "chave": chave})
+    assert r.status_code == 409
+    assert chave in r.json()["detail"]
+    assert amb.extras.read_text(encoding="utf-8") == antes
+
+
+@pytest.mark.parametrize("mudanca", [
+    {"chave": "../../.env"}, {"endpoint": "a/../b"}, {"estrategia": "imagem"},
+    {"titulo": ""}, {"max_tokens": 10**6}, {"campo_extra": 1},
+])
+def test_criar_topico_invalido_422_e_nada_grava(amb, mudanca):
+    amb.login()
+    r = amb.escrever("post", "/api/topicos", json={**NOVO, **mudanca})
+    assert r.status_code == 422
+    assert not amb.extras.exists()
+    assert "sumario" not in TOPICS
+
+
+def test_criacao_de_topico_e_logada_com_usuario(amb, caplog):
+    amb.login()
+    with caplog.at_level(logging.INFO, logger="app.routers.admin"):
+        amb.escrever("post", "/api/topicos", json=NOVO)
+    assert "Tópico criado" in caplog.text and USUARIO in caplog.text and "sumario" in caplog.text
+
+
+def test_executar_aceita_todos_os_topicos_mesmo_com_os_criados(amb, chamadas):
+    amb.login()
+    amb.escrever("post", "/api/topicos", json=NOVO)
+    for chave in TOPICS:
+        amb.prompt(chave, f"P-{chave}")
+    r = amb.escrever("post", "/api/executar", json={**BODY, "topicos": list(TOPICS)})
+    assert r.status_code == 200
+    assert {c for c, _ in chamadas} == set(TOPICS)
+
+
+# ---------------------------------------------------------------------------
 # /api/prompts
 # ---------------------------------------------------------------------------
 
@@ -262,6 +363,51 @@ def test_prompt_vazio_ou_gigante_422(amb, conteudo):
     r = amb.escrever("put", "/api/prompts/justificativa", json={"conteudo": conteudo})
     assert r.status_code == 422
     assert not (amb.prompts / "justificativa.md").exists()
+
+
+@pytest.mark.parametrize("csrf", [None, "token-errado"])
+def test_excluir_prompt_sem_sessao_ou_csrf_nao_apaga(amb, csrf):
+    amb.prompt("justificativa", "texto")
+    assert amb.cliente.delete("/api/prompts/justificativa").status_code == 401
+    amb.login()
+    headers = {"X-CSRF-Token": csrf} if csrf else {}
+    assert amb.cliente.delete("/api/prompts/justificativa", headers=headers).status_code == 403
+    assert (amb.prompts / "justificativa.md").exists()
+
+
+def test_excluir_prompt(amb, caplog):
+    amb.login()
+    amb.prompt("justificativa", "texto")
+    with caplog.at_level(logging.INFO, logger="app.routers.admin"):
+        r = amb.escrever("delete", "/api/prompts/justificativa")
+    assert r.status_code == 200
+    assert r.json() == {"chave": "justificativa", "titulo": TOPICS["justificativa"].nome, "conteudo": None}
+    assert not (amb.prompts / "justificativa.md").exists()
+    assert "Prompt 'justificativa' excluído" in caplog.text and USUARIO in caplog.text
+    por_chave = {t["chave"]: t for t in amb.cliente.get("/api/topicos").json()["topicos"]}
+    assert por_chave["justificativa"]["tem_prompt"] is False
+
+    # Idempotente: de novo, sem arquivo, continua 200.
+    assert amb.escrever("delete", "/api/prompts/justificativa").status_code == 200
+
+
+@pytest.mark.parametrize("chave", ["nao_existe", "..", "README"])
+def test_excluir_prompt_de_chave_desconhecida_404(amb, chave):
+    amb.login()
+    (amb.prompts / "README.md").write_text("x", encoding="utf-8")
+    assert amb.escrever("delete", f"/api/prompts/{chave}").status_code == 404
+    assert (amb.prompts / "README.md").exists()
+
+
+def test_topico_ativo_sem_prompt_depois_de_excluir_volta_erro(amb, chamadas):
+    amb.login()
+    amb.prompt("justificativa", "P1")
+    amb.prompt("oaes", "P2")
+    amb.escrever("delete", "/api/prompts/justificativa")
+    r = amb.escrever("post", "/api/executar", json=BODY)
+    topicos = {t["topico"]: t for t in r.json()["topicos"]}
+    assert topicos["justificativa"]["ok"] is False and "sem prompt" in topicos["justificativa"]["erro"]
+    assert [c for c, _ in chamadas] == ["oaes"]
 
 
 # ---------------------------------------------------------------------------

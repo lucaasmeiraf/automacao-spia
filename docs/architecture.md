@@ -87,6 +87,7 @@ supra-ia/
 │   ├── models.py                 # Pydantic: request / response / resultado
 │   ├── topics.py                 # DEFINIÇÃO declarativa dos tópicos (como funcionam)
 │   ├── topic_state.py            # ATIVAÇÃO: lê/grava config/topics.yaml (o "fio" do n8n), falha segura
+│   ├── topicos_extras.py         # Tópicos campo/json criados pela tela (config/topicos_extras.yaml)
 │   ├── prompts_store.py          # Prompts por tópico: prompts/<chave>.md (lê/grava)
 │   ├── arquivos.py               # Gravação atômica (temporário + os.replace)
 │   ├── log_buffer.py             # Buffer de logs em memória + id de execução (painel de logs, só dev)
@@ -125,7 +126,8 @@ supra-ia/
 │   └── gerar_chave.py            # gera WEBHOOK_API_KEY
 ├── pytest.ini                    # pythonpath=. (pytest puro funciona)
 ├── config/
-│   └── topics.yaml               # Ativação dos tópicos (true/false), versionado
+│   ├── topics.yaml               # Ativação dos tópicos (true/false), versionado
+│   └── topicos_extras.yaml       # Tópicos criados pela tela (definição), versionado
 ├── prompts/
 │   └── <chave>.md                # Prompt de sistema por tópico (padrão; o payload sobrepõe)
 ├── tests/
@@ -401,6 +403,7 @@ numa execução. Motivação principal: testar/ajustar um tópico por vez sem ro
 | | Onde vive | Quem muda | Exemplo |
 |---|---|---|---|
 | **Definição** do tópico — *como* ele funciona | `app/topics.py` (`TOPICS`), versionado | desenvolvedor | endpoint, estratégia, modelo, campos |
+| **Definição** de tópico simples criado pela tela | `config/topicos_extras.yaml`, versionado | tela de configuração (só `dev`) | mesmos campos, só `campo`/`json` |
 | **Ativação** — *se* ele roda | `config/topics.yaml`, versionado | tela de configuração (só `dev`) | `justificativa: true` |
 | **Prompt** — instrução ao LLM | payload da requisição (`prompts[]`) | sistema chamador | igual ao n8n |
 
@@ -470,8 +473,10 @@ Todas as rotas `dev` abaixo exigem sessão de **admin** (`Depends(exigir_admin)`
 | `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` | dev | Login do admin, sessão e token CSRF | ✅ fase 2a |
 | `POST /webhook/relatorio` | todos | Automação externa (header `X-API-Key`) | ✅ fase 2a |
 | `GET /api/topicos` | dev | Lista tópicos: chave, título, grupo, estratégia, modelo, `max_tokens`, endpoint, `custo`, `ativo`, `implementado`, `tem_prompt`; `configuracao_valida` + mensagem genérica se o YAML estiver inválido | ✅ 2b |
+| `POST /api/topicos` | dev | Cria tópico `campo`/`json` (mesmos campos de `TopicConfig`; chave `^[a-z][a-z0-9_]{1,63}$`, endpoint `^[a-z0-9_]{1,80}$`, nomes de campo `^[A-Za-z0-9_]{1,64}$`, modelo `gpt-4o-mini`/`gpt-4o`, `max_tokens` 50–4096). Chave repetida = 409. Grava `config/topicos_extras.yaml` (atômico) e acrescenta a `TOPICS` na hora; nasce desligado e sem prompt. Lido de novo em `create_app` (falha segura: arquivo ruim = nenhum extra; entrada ruim = só ela ignorada) | ✅ 2026-09-29 |
 | `PUT /api/topicos` | dev | `{"topicos": {chave: bool}}` aplicado **sobre o estado atual** (só as chaves enviadas mudam; valores precisam ser booleanos; chave fora de `TOPICS` = 422). Regrava o YAML inteiro (todos os tópicos, por grupo) de forma atômica; YAML inválido é consertado partindo de "tudo desligado" | ✅ 2b |
 | `GET /api/prompts`, `GET/PUT /api/prompts/{chave}` | dev | Lê/salva `prompts/<chave>.md` (`{"conteudo": ...}`; chave fora de `TOPICS` = 404; vazio ou > 50 000 caracteres = 422; CRLF normalizado; gravação atômica) | ✅ 2b |
+| `DELETE /api/prompts/{chave}` | dev | Apaga `prompts/<chave>.md` (idempotente: sem arquivo = 200 com `conteudo: null`; chave fora de `TOPICS` = 404). O tópico fica sem prompt | ✅ 2026-09-29 |
 | `POST /api/executar` | dev | **O botão "Executar"**: `{contrato, periodo_inicio, periodo_fim, prompts?, topicos?, dry_run?}`; mesma execução do webhook (`processing/execucao.py`); devolve a resposta por tópico + `execucao_id`, `dry_run`, `duracao_ms` | ✅ 2b |
 | `GET /api/logs` | dev | Últimas linhas de log (buffer em memória, 1000 linhas): `?nivel=INFO&execucao=<id>&apos=<seq>&limite=200` | ✅ 2b |
 | `GET /api/execucoes`, `GET /api/execucoes/{id}` | dev, homolog | Respostas das execuções feitas pela tela | 4 |

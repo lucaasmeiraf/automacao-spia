@@ -3,9 +3,11 @@ API de configuração (fase 2b — docs/architecture.md §10.5). A tela de dev �
 
   GET  /api/topicos            lista os tópicos com estado (ativo) e metadados
   PUT  /api/topicos            liga/desliga tópicos: {"topicos": {chave: true|false}}
+  POST /api/topicos            cria um tópico campo/json (config/topicos_extras.yaml), desligado
   GET  /api/prompts            todos os prompts (prompts/<chave>.md)
   GET  /api/prompts/{chave}    um prompt
   PUT  /api/prompts/{chave}    salva um prompt: {"conteudo": "..."}
+  DELETE /api/prompts/{chave}  apaga o prompt (prompts/<chave>.md); o tópico fica sem prompt
   POST /api/executar           o botão "Executar" (mesma execução do webhook; `dry_run`, `topicos`)
   GET  /api/logs               últimas linhas de log (buffer em memória)
 
@@ -30,11 +32,12 @@ from app.processing.execucao import (
     ConfiguracaoIndisponivel,
     executar_relatorio,
 )
-from app.prompts_store import PROMPT_MAX_CARACTERES, carregar_prompt, salvar_prompt
+from app.prompts_store import PROMPT_MAX_CARACTERES, carregar_prompt, excluir_prompt, salvar_prompt
 from app.security.deps import AdminDep
 from app.security.sessions import Sessao
-from app.topic_state import ler_estado, salvar_estado
-from app.topics import TOPICS
+from app.topic_state import esquecer_cache, ler_estado, salvar_estado
+from app.topicos_extras import ChaveRepetida, TopicoNovo, criar
+from app.topics import TOPICOS_BASE, TOPICS
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +76,14 @@ class TopicoInfo(BaseModel):
     ativo: bool
     implementado: bool
     tem_prompt: bool
+    # Definição completa (a tela usa para "copiar de um tópico existente").
+    campo_conteudo: str
+    html_fields: list[str]
+    campos_manter: list[str]
+    empty_as_array: bool
+    campos_presenca: list[str]
+    # False = criado pela tela (config/topicos_extras.yaml); True = definido em app/topics.py.
+    no_codigo: bool
 
 
 class TopicosResponse(BaseModel):
@@ -108,6 +119,12 @@ async def _listar_topicos(request: Request) -> TopicosResponse:
             ativo=chave in estado.ativos,
             implementado=True,  # tudo que está em TOPICS tem execução; os não portados estão comentados
             tem_prompt=await carregar_prompt(chave, settings.prompts_dir) is not None,
+            campo_conteudo=cfg.campo_conteudo,
+            html_fields=list(cfg.html_fields),
+            campos_manter=list(cfg.campos_manter),
+            empty_as_array=cfg.empty_as_array,
+            campos_presenca=list(cfg.campos_presenca),
+            no_codigo=chave in TOPICOS_BASE,
         )
         for chave, cfg in TOPICS.items()
     ]
@@ -136,6 +153,31 @@ async def alterar_topicos(
     logger.info(
         "Tópicos alterados (usuario=%r): ligados=%s desligados=%s",
         sessao.usuario[:64], ligados, desligados,
+    )
+    return await _listar_topicos(request)
+
+
+@router.post("/topicos", response_model=TopicosResponse, status_code=201)
+async def criar_topico(
+    dados: TopicoNovo, request: Request, sessao: Sessao = AdminDep
+) -> TopicosResponse:
+    settings = request.app.state.settings
+    try:
+        await criar(settings.topicos_extras_file, dados)
+    except ChaveRepetida:
+        raise HTTPException(
+            status_code=409, detail=f"Já existe um tópico com a chave '{dados.chave}'."
+        ) from None
+    except OSError:
+        logger.exception("Não foi possível gravar o tópico '%s'.", dados.chave)
+        raise HTTPException(
+            status_code=503, detail="Não foi possível gravar config/topicos_extras.yaml."
+        ) from None
+    # O estado de ativação em cache foi calculado sem conhecer a chave nova.
+    esquecer_cache()
+    logger.info(
+        "Tópico criado (usuario=%r): %s (%s, endpoint=%s, grupo=%r) — desligado.",
+        sessao.usuario[:64], dados.chave, dados.estrategia, dados.endpoint, dados.grupo,
     )
     return await _listar_topicos(request)
 
@@ -202,13 +244,28 @@ async def salvar_prompt_rota(
     return await _prompt_info(chave, prompts_dir)
 
 
+@router.delete("/prompts/{chave}", response_model=PromptInfo)
+async def excluir_prompt_rota(chave: str, request: Request, sessao: Sessao = AdminDep) -> PromptInfo:
+    """Idempotente: excluir um prompt que não existe devolve 200 com `conteudo: null`."""
+    chave = _chave_ou_404(chave)
+    prompts_dir = request.app.state.settings.prompts_dir
+    existia = await excluir_prompt(chave, prompts_dir)
+    logger.info(
+        "Prompt '%s' excluído (usuario=%r)%s.",
+        chave, sessao.usuario[:64], "" if existia else " — não havia arquivo",
+    )
+    return await _prompt_info(chave, prompts_dir)
+
+
 # ---------------------------------------------------------------------------
 # Executar (o botão da tela)
 # ---------------------------------------------------------------------------
 
 class ExecutarRequest(RelatorioRequest):
     # Roda exatamente estes tópicos, ignorando config/topics.yaml (sem alterar o estado salvo).
-    topicos: list[str] | None = Field(default=None, min_length=1, max_length=len(TOPICS))
+    # Limite fixo generoso; o limite real (nº de tópicos, que cresce com os criados pela tela) é
+    # conferido no validador.
+    topicos: list[str] | None = Field(default=None, min_length=1, max_length=500)
     # Faz fetch + montagem, mas não chama a OpenAI (nenhum token gasto).
     dry_run: bool = False
 
@@ -216,6 +273,8 @@ class ExecutarRequest(RelatorioRequest):
     @classmethod
     def _topicos_conhecidos(cls, v: list[str] | None) -> list[str] | None:
         if v is not None:
+            if len(v) > len(TOPICS):
+                raise ValueError(f"no máximo {len(TOPICS)} tópicos")
             _validar_chaves(v)
         return v
 

@@ -9,6 +9,9 @@ adicionar uma entrada neste dicionário.
 Estar aqui NÃO significa rodar: se o tópico roda ou não (o "fio" do n8n) é a
 ATIVAÇÃO, definida em `config/topics.yaml` (ver `app/topic_state.py`).
 
+Tópicos simples (`campo`/`json`) também podem ser criados pela tela de configuração: ficam em
+`config/topicos_extras.yaml` e são acrescentados a `TOPICS` na inicialização (`app/topicos_extras.py`).
+
 Estratégias disponíveis (campo `estrategia`):
   - "campo"        usa um único campo do registro (campo_conteudo) como user content.
   - "json"         serializa todo(s) o(s) registro(s) em JSON como user content.
@@ -24,6 +27,7 @@ Estratégias disponíveis (campo `estrategia`):
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -253,6 +257,10 @@ TOPICS: dict[str, TopicConfig] = {
     #     grupo=GRUPO_PRINCIPAL,
     # ),
 }
+
+# Cópia imutável dos tópicos definidos EM CÓDIGO. Em tempo de execução, `TOPICS` também recebe os
+# tópicos criados pela tela (config/topicos_extras.yaml — ver app/topicos_extras.py).
+TOPICOS_BASE = MappingProxyType(dict(TOPICS))
 
 
 def topico_configurado(chave: str) -> TopicConfig | None:

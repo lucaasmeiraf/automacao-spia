@@ -73,3 +73,19 @@ def _salvar_prompt_sync(chave: str, diretorio: str, texto: str) -> None:
 async def salvar_prompt(chave: str, diretorio: str, texto: str) -> None:
     """Grava `prompts/<chave>.md` de forma atômica. Só aceita chaves de TOPICS."""
     await asyncio.to_thread(_salvar_prompt_sync, chave, diretorio, texto)
+
+
+def _excluir_prompt_sync(chave: str, diretorio: str) -> bool:
+    arquivo = _caminho_prompt(chave, diretorio)
+    if arquivo is None:
+        raise ValueError("tópico desconhecido")
+    try:
+        arquivo.unlink()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+async def excluir_prompt(chave: str, diretorio: str) -> bool:
+    """Apaga `prompts/<chave>.md`. Devolve False se não havia arquivo. Só aceita chaves de TOPICS."""
+    return await asyncio.to_thread(_excluir_prompt_sync, chave, diretorio)
