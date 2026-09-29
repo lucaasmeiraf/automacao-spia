@@ -368,7 +368,23 @@ Análise de conformidade pluviométrica
 - [ ] (opcional) Resultado por tópico conforme termina (SSE) em vez de esperar todos — §10.6
 - [ ] Sessões de login ficam em memória (1 processo): migrar para armazenamento compartilhado se um dia rodar com vários processos
 - [ ] Ajuste de prompts por seção conforme feedback dos resultados
-- [ ] Endurecer o parse da LLM (remover blocos ```` ```json ````, avaliar `response_format: json_object`) — o n8n também não tinha
+- [x] ~~Endurecer o parse da LLM (remover blocos ```` ```json ````, avaliar `response_format: json_object`)~~ —
+  feito em 2026-09-29 (`app/processing/llm_resposta.py`); 17 dos 20 nós "Limpa Retorno" do n8n já removiam
+- [ ] **Instabilidade da conexão VPS → SUPRA (investigar)** — aberta em 2026-09-29.
+  - *Sintoma:* da VPS (`177.7.59.150`, Hostinger), a SUPRA ora reseta a conexão já no handshake TLS
+    (`Connection reset by peer`, curl erro 35 / `ReadError`), em rajadas (3 quedas em 5 s), ora trava no meio da
+    resposta (`ReadTimeout` de 120 s no `download_ws`). Acontece com curl, Python do sistema e httpx.
+  - *Contexto que intriga:* o n8n também rodava numa KVM2 da **Hostinger** (fora da rede do DNIT) e não tinha
+    essas quedas.
+  - *Hipóteses a testar:* (1) o IP desta VPS específica está limitado/bloqueado por firewall/WAF da SUPRA (testar
+    do IP da VPS antiga do n8n, se ainda existir); (2) impressão digital TLS (Node/n8n × OpenSSL de curl/Python) —
+    testar a mesma URL com Node na VPS; (3) volume/rajada de requisições (o n8n fazia menos em paralelo?) —
+    medir com `DNIT_MAX_CONCORRENCIA=1`; (4) IPv4 × IPv6 ou MTU da rede da VPS; (5) instabilidade da própria
+    SUPRA no período — repetir em outros horários.
+  - *Mitigação atual (não resolve a causa):* novas tentativas em queda de conexão (`DNIT_RETRIES=4`,
+    `DNIT_RETRY_ESPERA=2`) e detecção de travamento por `DNIT_TIMEOUT=20` s sem dados; esgotado, vira
+    `SupraIndisponivel` com mensagem clara. Os avisos `SUPRA …: nova tentativa` nos logs medem a frequência.
+  - *Critério de fechamento:* causa identificada e taxa de quedas medida ≈ 0 (ou acordo com a equipe da SUPRA).
 - [ ] Validar o valor de `conforme` (`Conforme` / `Atenção` / `Não Conforme`) no resultado
 - [ ] Distinguir **erro de acesso da SUPRA** (`status: false` + "Usuário não cadastrado ou dados inválidos") de
   **seção sem dados**: hoje os dois viram conteúdo vazio e seguiriam para a LLM (custo + "Não Conforme"

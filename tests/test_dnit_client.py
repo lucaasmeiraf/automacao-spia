@@ -13,7 +13,7 @@ import base64
 import httpx
 import pytest
 
-from app.clients.dnit import ArquivoInvalido, DnitClient, SupraTokenRecusado
+from app.clients.dnit import ArquivoInvalido, DnitClient, SupraIndisponivel, SupraTokenRecusado
 from tests.helpers import fazer_settings
 
 BASE = "https://supra.teste/index_cgcont_common.php/cgcont/ai"
@@ -242,9 +242,26 @@ async def test_conexao_derrubada_persistente_falha_depois_das_tentativas():
 
     dnit, http = _cliente(handler, dnit_retries=2)
     async with http:
-        with pytest.raises(httpx.ReadError):
+        with pytest.raises(SupraIndisponivel, match="3 tentativa.*ReadError"):
             await dnit.buscar_secao("rpfo", "c", "a", "b")
     assert len(chamadas) == 3
+
+
+@pytest.mark.asyncio
+async def test_travamento_usa_o_timeout_da_supra_e_e_repetido():
+    chamadas = []
+
+    async def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        if len(chamadas) == 1:
+            raise httpx.ReadTimeout("sem dados", request=req)
+        return httpx.Response(200, json={"status": True, "resultado": []})
+
+    dnit, http = _cliente(handler, dnit_timeout=15)
+    async with http:
+        await dnit.buscar_secao("mapa_situacao", "c", "a", "b")
+    assert len(chamadas) == 2
+    assert chamadas[0].extensions["timeout"] == {"connect": 10.0, "read": 15, "write": 15, "pool": 15}
 
 
 @pytest.mark.asyncio
@@ -284,6 +301,7 @@ async def test_no_maximo_n_requisicoes_simultaneas_e_todas_concluem():
 
 
 def test_configuracao_invalida_e_recusada():
-    for kw in ({"dnit_max_concorrencia": 0}, {"dnit_retries": -1}, {"dnit_retry_espera": -1}):
+    for kw in ({"dnit_max_concorrencia": 0}, {"dnit_retries": -1}, {"dnit_retry_espera": -1},
+               {"dnit_timeout": 1}):
         with pytest.raises(ValueError):
             fazer_settings(**kw)

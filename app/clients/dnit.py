@@ -12,8 +12,10 @@ devolve "502 Proxy Error" para algumas; uma a uma, todas funcionam. Por isso:
 Os dados, parâmetros e headers enviados são exatamente os mesmos de antes.
 
 Conexão derrubada (2026-09-29): a partir da VPS, a SUPRA às vezes reseta a conexão já no handshake TLS
-("Connection reset by peer"), em rajadas de alguns segundos. Falhas de transporte também entram nas
-novas tentativas, com a mesma espera crescente.
+("Connection reset by peer"), em rajadas de alguns segundos, ou trava no meio da resposta. Falhas de
+transporte também entram nas novas tentativas, com a mesma espera crescente; travamento é detectado por
+`dnit_timeout` (segundos sem dados), bem menor que o HTTP_TIMEOUT geral. Esgotadas as tentativas, vira
+`SupraIndisponivel` com mensagem clara.
 
 Token recusado: a SUPRA não responde 401 — redireciona (307) para a página inicial, com corpo vazio.
 Isso vira `SupraTokenRecusado`, com mensagem clara, em vez de um erro genérico de redirecionamento.
@@ -49,6 +51,10 @@ _CAMPOS_BASE64 = ("base64", "arquivo", "conteudo", "content", "data", "file")
 
 class SupraTokenRecusado(RuntimeError):
     """A SUPRA redirecionou para o login: o DNIT_TOKEN está vencido, inválido ou a senha mudou."""
+
+
+class SupraIndisponivel(RuntimeError):
+    """A SUPRA derrubou/travou a conexão em todas as tentativas."""
 
 
 class ArquivoInvalido(ValueError):
@@ -137,6 +143,8 @@ class DnitClient:
         self._semaforo = asyncio.Semaphore(settings.dnit_max_concorrencia)
         self._retries = settings.dnit_retries
         self._espera = settings.dnit_retry_espera
+        # Conexão: 10 s; leitura/escrita: tempo máximo sem tráfego (detecta a SUPRA travada).
+        self._timeout = httpx.Timeout(settings.dnit_timeout, connect=10.0)
 
     def _headers(self, accept: str = "application/json") -> dict[str, str]:
         return {"Accept": accept, "token": self._token}
@@ -149,11 +157,16 @@ class DnitClient:
             ultima = tentativa >= self._retries
             try:
                 async with self._semaforo:
-                    resp = await self._client.get(url, params=params, headers=self._headers(accept))
+                    resp = await self._client.get(
+                        url, params=params, headers=self._headers(accept), timeout=self._timeout
+                    )
             except httpx.TransportError as exc:
-                if ultima:
-                    raise
                 motivo = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                if ultima:
+                    raise SupraIndisponivel(
+                        f"SUPRA indisponível em {descricao}: conexão derrubada ou sem resposta em "
+                        f"{self._retries + 1} tentativa(s) (último erro: {motivo}). Tente de novo em instantes."
+                    ) from exc
             else:
                 if resp.status_code not in _STATUS_REPETIVEIS or ultima:
                     if resp.is_redirect:

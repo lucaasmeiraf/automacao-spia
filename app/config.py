@@ -88,8 +88,14 @@ class Settings(BaseSettings):
     )
     # Proteção do servidor da SUPRA: muitas chamadas simultâneas geram "502 Proxy Error".
     dnit_max_concorrencia: int = Field(default=4, ge=1, le=20)   # requisições simultâneas
-    dnit_retries: int = Field(default=2, ge=0, le=5)             # novas tentativas em 502/503/504
-    dnit_retry_espera: float = Field(default=1.0, ge=0, le=30)   # segundos (cresce a cada tentativa)
+    # Da VPS, a SUPRA derruba conexões em rajadas de vários segundos (2026-09-29): 4 novas tentativas
+    # com espera de 2, 4, 6 e 8 s cobrem ~20 s de instabilidade.
+    dnit_retries: int = Field(default=4, ge=0, le=8)             # novas tentativas (502/503/504, conexão)
+    dnit_retry_espera: float = Field(default=2.0, ge=0, le=30)   # segundos (cresce a cada tentativa)
+    # Tempo máximo SEM receber dados da SUPRA antes de desistir da tentativa (não é o tempo total).
+    # A SUPRA às vezes trava no meio do download; com o HTTP_TIMEOUT geral (120 s) a execução ficava
+    # parada 2 min por travamento. A OpenAI continua com o HTTP_TIMEOUT (a IA demora para responder).
+    dnit_timeout: float = Field(default=20.0, ge=5, le=300)
 
     # Legendas globais
     legendas: str = ""
