@@ -23,6 +23,9 @@ Estratégias disponíveis (campo `estrategia`):
                    Delegado para app/processing/contratuais.py.
   - "pluviometrico" pipeline multi-fonte: SUPRA + Nominatim + Open-Meteo + LLM.
                    Delegado para app/processing/pluviometrico.py.
+  - "campo_anexos" texto do campo_conteudo de cada registro + conteúdo extraído (ETL xlsx/pdf)
+                   dos anexos de cada registro (id_arquivo/nome_arquivo), no bloco "ANEXOS".
+                   Delegado para app/processing/campo_anexos.py.
 """
 from __future__ import annotations
 
@@ -91,7 +94,8 @@ TOPICS: dict[str, TopicConfig] = {
         model="gpt-4o-mini",
         max_tokens=800,
         html_fields=("resumo", "descricao"),
-        estrategia="campo",
+        # Itens Pavimento Novo/Existente trazem anexo (xlsx/pdf) cruzado com o texto — ver campo_anexos.py
+        estrategia="campo_anexos",
         campo_conteudo="resumo",
         titulo="Resumo do Projeto",
         grupo=GRUPO_PRINCIPAL,

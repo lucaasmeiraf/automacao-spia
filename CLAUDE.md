@@ -47,6 +47,8 @@ app/
     ├── html_clean.py    # strip_html
     ├── image.py         # handler estratégia "imagem"
     ├── contratuais.py   # handler estratégia "contratuais"
+    ├── campo_anexos.py  # handler estratégia "campo_anexos" (texto + anexos xlsx/pdf por id_arquivo)
+    ├── extracao.py      # ETL dos anexos: xlsx/pdf/csv → texto (sem OCR)
     └── pluviometrico.py # handler estratégia "pluviometrico"
 scripts/                 # python -m scripts.gerar_hash_senha | gerar_chave (uso manual, não é do app)
 pytest.ini               # pythonpath=. — `pytest` puro funciona
@@ -78,7 +80,7 @@ Não existem `src/`, `BaseProcessor` nem `tests/processors/` — não os crie.
   de automação externa usa `Depends(exigir_chave_webhook)`. Nunca crie rota de configuração sem autenticação.
 - Arquivos gravados pela API (`topics.yaml`, prompts) usam `escrever_atomico` (`app/arquivos.py`).
 - Clients (`app/clients/`) não têm lógica de negócio — apenas fazem chamadas e retornam dados brutos.
-- Estratégias existentes: `campo`, `json`, `imagem`, `contratuais`, `pluviometrico`
+- Estratégias existentes: `campo`, `json`, `imagem`, `contratuais`, `pluviometrico`, `campo_anexos`
   (detalhes em `docs/architecture.md` §3.4).
 
 ### Como adicionar um tópico
@@ -173,7 +175,7 @@ python -m py_compile app/clients/<arquivo>.py
 ```bash
 pytest tests/ -v
 ```
-Estado atual: 397 testes (pipeline, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
+Estado atual: 431 testes (pipeline, anexos/ETL, pluviométrico, html_clean, ativação, prompts, seleção, webhook,
 segurança, auth, settings, API de configuração, dry-run, buffer de logs, tela, cliente SUPRA). Testes de app usam `tests/helpers.py` (`fazer_settings`/`fazer_app`: Settings
 hermético e `create_app` sem lifespan). Toda mudança de segurança precisa de teste do caso NEGATIVO
 (sem chave, sem sessão, sem CSRF, senha errada, fora de `dev`). Todo handler novo deve ter testes com

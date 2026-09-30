@@ -180,6 +180,7 @@ roda e a API responde **503** com mensagem genérica (o detalhe fica só no log)
 | `"imagem"` | Baixa imagem e analisa com gpt-4o (visão) | `processing/image.py` |
 | `"contratuais"` | Formata datas e valores monetários antes da LLM | `processing/contratuais.py` |
 | `"pluviometrico"` | Pipeline 4 fontes: SUPRA + Nominatim + Open-Meteo + LLM | `processing/pluviometrico.py` |
+| `"campo_anexos"` | Texto da seção (como `campo`) + conteúdo extraído (ETL) dos anexos xlsx/pdf de cada registro (`id_arquivo`) no bloco `ANEXOS` — ver §4 "Anexos lidos por ETL" | `processing/campo_anexos.py` |
 
 ### 3.5 Paralelismo
 
@@ -251,6 +252,47 @@ de texto; fallback por regex (`erro_parse: true` + `resposta_ia`). O resultado �
 `json` é a lista enviada à LLM (antes, texto JSON). O pluviométrico mantém toda a resposta da IA
 (`distribuicao_dias`, `conformidade_in51`, `analise_impacto`, `checklist`), como no n8n.
 - Token inválido: a SUPRA responde **307** para a página inicial (não 401) → `SupraTokenRecusado`.
+
+### Anexos lidos por ETL (Resumo do Projeto) — desenho de 2026-09-30
+
+**Problema.** O Resumo do Projeto (roteiro 25) tem até 3 itens — Pavimento Novo, Pavimento Existente e OAEs.
+Os dois primeiros trazem um anexo (planilha ou PDF) cujos dados precisam ser cruzados com o texto; OAEs não
+têm anexo. Cada item é um registro da tabela com o seu `id_arquivo` (Novo + Existente = 2 registros).
+
+**O que a SUPRA oferece (testado em 2026-09-30, contrato `00 00493/2013`):**
+
+| Endpoint | Traz o anexo do resumo? | Observação |
+|---|---|---|
+| `secao_ws/resumo_projeto` | ❌ | colunas: `id_contrato_obra`, `roteiro`, `resumo`, `ultima_alteracao`, `r` (sem `id_arquivo`) |
+| `arquivo/download_ws` | — | aceita só `nome_arquivo` (+ contrato) **ou** `contrato + periodo + opcao`; `id_arquivo` é recusado |
+| `arquivo/arquivos_ws` | ⚠️ | grupo "Resumo do Projeto" com `nome_arquivo_storage`, mas só no **mês em que o arquivo foi publicado** e sem `id_arquivo` |
+| `secao_ws/demais_anexos` | ❌ | tem `id_arquivo` + `nome_arquivo`, acumulado até `periodo_fim`, mas só tipos "Outros"/"Planilha de Equilíbrio" — anexos de roteiro não aparecem |
+
+**Pedido à equipe da SUPRA (feito pelo Lucas em 2026-09-30, aguardando):** (1) `resumo_projeto` passa a
+devolver `id_arquivo` em cada registro; (2) `download_ws` passa a aceitar `id_arquivo` como alternativa a
+`nome_arquivo`. Nome do parâmetro assumido: **`id_arquivo`** — confirmar quando publicarem.
+
+**Desenho (estratégia `campo_anexos`, `app/processing/campo_anexos.py`):**
+1. `buscar_secao` → registros. Texto = `campo_conteudo` de cada registro, sem HTML, sem repetir textos iguais.
+2. Para cada registro com `nome_arquivo` ou `id_arquivo` (sem repetir o mesmo arquivo):
+   `DnitClient.baixar_anexo` — prefere `nome_arquivo` (modo que já funciona hoje), senão `id_arquivo`.
+   Aceita qualquer tipo: binário (`Content-Disposition: attachment`) ou JSON com base64 (imagens).
+3. ETL (`app/processing/extracao.py`, fora do loop de eventos via `asyncio.to_thread`):
+   - **xlsx** (openpyxl, valores calculados): cada aba vira `### Aba: <nome>` e cada linha
+     `célula | célula` (células vazias omitidas; `%` pelo formato da célula; datas ISO);
+   - **pdf** (pypdf): texto por página. PDF escaneado (sem texto) → aviso; **não há OCR**;
+   - csv/txt: texto puro. `.xls` antigo, docx e outros → "formato não suportado" (aviso, sem derrubar o tópico);
+   - limite de **40 000 caracteres por anexo** (`truncado: true` quando corta).
+4. Mensagem à LLM = texto da seção + (se houver anexos) bloco `ANEXOS`, um `[Anexo n] <nome>` por arquivo —
+   é o formato que o prompt `prompts/resumo_projeto.md` já espera. Sem anexo, não há bloco `ANEXOS`.
+5. Falhas: anexo que não baixa/não lê entra no bloco `ANEXOS` como "não foi possível ler (motivo)" e o
+   tópico segue (a LLM trata como anexo não fornecido). SUPRA fora do ar ou token recusado → `ok: false`.
+6. `infos` = `{"texto": ..., "anexos": [{id_arquivo, nome_arquivo, nome, formato, caracteres, truncado,
+   aviso, erro, conteudo}]}`.
+
+Enquanto a SUPRA não publicar as mudanças, os registros não têm `id_arquivo` e o tópico se comporta
+exatamente como a estratégia `campo` (só texto, sem bloco `ANEXOS`) — ligar a estratégia não quebra nada.
+A estratégia é genérica: outros tópicos cujos registros tragam `id_arquivo` podem usá-la.
 
 ---
 
@@ -336,7 +378,7 @@ Análise de conformidade pluviométrica
 | Tópico | Estratégia | Modelo | Status |
 |---|---|---|---|
 | `justificativa` | campo | gpt-4o-mini | ✅ |
-| `resumo_projeto` | campo | gpt-4o-mini | ✅ |
+| `resumo_projeto` | campo_anexos (texto + ETL xlsx/pdf dos anexos) | gpt-4o-mini | ✅ texto · ⏳ anexos aguardam a SUPRA (`id_arquivo`) |
 | `historico` | campo | gpt-4o-mini | ✅ |
 | `introducao` | campo | gpt-4o-mini | ✅ |
 | `oaes` | json + campos_manter | gpt-4o-mini | ✅ |
@@ -385,6 +427,11 @@ Análise de conformidade pluviométrica
     `DNIT_RETRY_ESPERA=2`) e detecção de travamento por `DNIT_TIMEOUT=20` s sem dados; esgotado, vira
     `SupraIndisponivel` com mensagem clara. Os avisos `SUPRA …: nova tentativa` nos logs medem a frequência.
   - *Critério de fechamento:* causa identificada e taxa de quedas medida ≈ 0 (ou acordo com a equipe da SUPRA).
+- [ ] **Anexos do Resumo do Projeto** — código pronto (estratégia `campo_anexos`, 2026-09-30); aguarda a
+  SUPRA devolver `id_arquivo` em `resumo_projeto` e aceitar `id_arquivo` no `download_ws`. Ao publicarem:
+  confirmar o nome do parâmetro, rodar dry-run do contrato `00 00493/2013` e conferir o bloco `ANEXOS`.
+- [ ] OCR para anexos PDF digitalizados (hoje viram "sem texto extraível"; ex.: termos aditivos do 493/2013)
+- [ ] Ler anexos `.docx` e `.xls` antigos (hoje "formato não suportado")
 - [ ] Validar o valor de `conforme` (`Conforme` / `Atenção` / `Não Conforme`) no resultado
 - [ ] Distinguir **erro de acesso da SUPRA** (`status: false` + "Usuário não cadastrado ou dados inválidos") de
   **seção sem dados**: hoje os dois viram conteúdo vazio e seguiriam para a LLM (custo + "Não Conforme"

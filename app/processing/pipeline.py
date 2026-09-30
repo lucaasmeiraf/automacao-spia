@@ -8,6 +8,7 @@ Para estratégias especiais, delega para o handler correspondente:
   - "imagem"        → app/processing/image.py
   - "contratuais"   → app/processing/contratuais.py
   - "pluviometrico" → app/processing/pluviometrico.py
+  - "campo_anexos"  → app/processing/campo_anexos.py
 """
 from __future__ import annotations
 
@@ -108,6 +109,12 @@ async def processar_topico(
     if cfg.estrategia == "pluviometrico":
         from app.processing.pluviometrico import processar_pluviometrico
         return await processar_pluviometrico(
+            cfg, prompt_sistema, contrato, periodo_inicio, periodo_fim, ctx
+        )
+
+    if cfg.estrategia == "campo_anexos":
+        from app.processing.campo_anexos import processar_campo_anexos
+        return await processar_campo_anexos(
             cfg, prompt_sistema, contrato, periodo_inicio, periodo_fim, ctx
         )
 

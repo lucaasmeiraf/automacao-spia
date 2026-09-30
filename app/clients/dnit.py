@@ -26,7 +26,9 @@ import asyncio
 import base64
 import binascii
 import logging
+import re
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 import httpx
 
@@ -65,6 +67,8 @@ class ArquivoInvalido(ValueError):
 class ArquivoBaixado:
     conteudo: bytes
     mime_type: str
+    # Nome original do arquivo (Content-Disposition), quando a SUPRA informa. Só em `baixar_anexo`.
+    nome: str = ""
 
     @property
     def base64(self) -> str:
@@ -133,6 +137,53 @@ def interpretar_download(resp: httpx.Response) -> ArquivoBaixado:
     if mime is None:
         raise ArquivoInvalido("Arquivo baixado não é JPEG, PNG, GIF nem WEBP.")
     return ArquivoBaixado(conteudo=conteudo, mime_type=mime)
+
+
+_FILENAME_RE = re.compile(r"filename\*=(?:UTF-8'')?([^;]+)|filename=\"?([^\";]+)\"?", re.IGNORECASE)
+
+
+def _nome_do_content_disposition(valor: str) -> str:
+    """`attachment; filename="Projeto 493.xlsx"` → `Projeto 493.xlsx` (aceita também `filename*=UTF-8''...`)."""
+    m = _FILENAME_RE.search(valor or "")
+    if not m:
+        return ""
+    return unquote(m.group(1)).strip() if m.group(1) else m.group(2).strip()
+
+
+def interpretar_download_anexo(resp: httpx.Response) -> ArquivoBaixado:
+    """
+    download_ws para QUALQUER tipo de arquivo (anexos lidos por ETL). Testado na SUPRA em 2026-09-30:
+    pdf/xlsx vêm como binário com `Content-Disposition: attachment; filename="<nome original>"` e o
+    Content-Type do arquivo; imagens vêm em JSON com base64; erro vem em JSON com `status: false`.
+    """
+    tipo = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    nome = _nome_do_content_disposition(resp.headers.get("content-disposition", ""))
+    if tipo == "application/json":
+        try:
+            dados = resp.json()
+        except ValueError as exc:
+            raise ArquivoInvalido("download_ws devolveu um JSON inválido.") from exc
+        texto = _base64_do_json(dados)  # `status: false` vira ArquivoInvalido com a mensagem da SUPRA
+        if not texto:
+            raise ArquivoInvalido("download_ws respondeu JSON sem o conteúdo do arquivo.")
+        mime = ""
+        resultado = dados.get("resultado") if isinstance(dados, dict) else None
+        if isinstance(resultado, dict):
+            mime = str(resultado.get("mime_type") or "")
+        if texto.startswith("data:") and "," in texto:
+            cabecalho, texto = texto.split(",", 1)
+            mime = mime or cabecalho[5:].split(";")[0]
+        try:
+            conteudo = base64.b64decode(texto, validate=False)
+        except (binascii.Error, ValueError) as exc:
+            raise ArquivoInvalido("download_ws devolveu um base64 inválido.") from exc
+        tipo = mime or detectar_mime_imagem(conteudo) or "application/octet-stream"
+    else:
+        conteudo = resp.content
+        tipo = tipo or "application/octet-stream"
+    if not conteudo:
+        raise ArquivoInvalido("download_ws devolveu um arquivo vazio.")
+    return ArquivoBaixado(conteudo=conteudo, mime_type=tipo, nome=nome)
 
 
 class DnitClient:
@@ -225,3 +276,25 @@ class DnitClient:
         logger.info("DNIT GET arquivo/download_ws (contrato=%s, arquivo=%s)", contrato, nome_arquivo)
         resp = await self._get(url, params, "arquivo/download_ws", accept="*/*")
         return interpretar_download(resp)
+
+    async def baixar_anexo(
+        self, contrato: str, *, nome_arquivo: str = "", id_arquivo: str = ""
+    ) -> ArquivoBaixado:
+        """
+        GET .../arquivo/download_ws — qualquer tipo de arquivo (pdf, xlsx…), para os anexos lidos por ETL.
+
+        Prefere `nome_arquivo` (modo que a SUPRA aceita hoje). `id_arquivo` foi pedido à equipe da SUPRA
+        em 2026-09-30 e ainda não é aceito — o nome do parâmetro é a CONFIRMAR quando publicarem.
+        """
+        if nome_arquivo:
+            params = {"contrato": contrato, "nome_arquivo": nome_arquivo}
+        elif id_arquivo:
+            params = {"contrato": contrato, "id_arquivo": id_arquivo}
+        else:
+            raise ValueError("Informe nome_arquivo ou id_arquivo.")
+        url = f"{self._base_url}/arquivo/download_ws"
+        logger.info(
+            "DNIT GET arquivo/download_ws (contrato=%s, arquivo=%s)", contrato, nome_arquivo or f"id {id_arquivo}"
+        )
+        resp = await self._get(url, params, "arquivo/download_ws", accept="*/*")
+        return interpretar_download_anexo(resp)

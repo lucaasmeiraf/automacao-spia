@@ -8,6 +8,10 @@ python-dotenv==1.0.1
 PyYAML==6.0.3
 argon2-cffi==25.1.0
 
+# --- Leitura de anexos (ETL xlsx/pdf — estratégia "campo_anexos") ---
+openpyxl==3.1.5
+pypdf==6.19.0
+
 # --- Testes ---
 pytest==8.3.4
 pytest-asyncio==0.25.2

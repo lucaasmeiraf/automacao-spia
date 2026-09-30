@@ -305,3 +305,105 @@ def test_configuracao_invalida_e_recusada():
                {"dnit_timeout": 1}):
         with pytest.raises(ValueError):
             fazer_settings(**kw)
+
+
+# ---------------------------------------------------------------------------
+# baixar_anexo — qualquer tipo de arquivo (anexos lidos por ETL)
+# Formato real (2026-09-30): pdf/xlsx em binário com Content-Disposition; erro em JSON status=false.
+# ---------------------------------------------------------------------------
+
+XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _servidor_de_arquivo(resposta: httpx.Response):
+    chamadas: list[httpx.Request] = []
+
+    async def handler(req: httpx.Request) -> httpx.Response:
+        chamadas.append(req)
+        return resposta
+
+    return handler, chamadas
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_binario_com_nome_original():
+    resp = httpx.Response(200, content=b"PK\x03\x04planilha", headers={
+        "content-type": XLSX_CT, "content-disposition": 'attachment; filename="Projeto Pavimento 493.xlsx"',
+    })
+    handler, chamadas = _servidor_de_arquivo(resp)
+    dnit, http = _cliente(handler)
+    async with http:
+        arq = await dnit.baixar_anexo("00 00493/2013", nome_arquivo="397621236_795.xlsx")
+
+    assert (arq.conteudo, arq.mime_type, arq.nome) == (b"PK\x03\x04planilha", XLSX_CT, "Projeto Pavimento 493.xlsx")
+    (req,) = chamadas
+    assert req.url.path.endswith("/cgcont/ai/arquivo/download_ws")
+    assert dict(req.url.params) == {"contrato": "00 00493/2013", "nome_arquivo": "397621236_795.xlsx"}
+    assert req.headers["token"] == "TOKEN-TESTE"
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_por_id_arquivo_quando_nao_ha_nome():
+    handler, chamadas = _servidor_de_arquivo(httpx.Response(200, content=b"%PDF-1.4", headers={"content-type": "application/pdf"}))
+    dnit, http = _cliente(handler)
+    async with http:
+        arq = await dnit.baixar_anexo("00 00493/2013", id_arquivo="481468")
+
+    assert arq.mime_type == "application/pdf" and arq.nome == ""
+    assert dict(chamadas[0].url.params) == {"contrato": "00 00493/2013", "id_arquivo": "481468"}
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_prefere_nome_arquivo():
+    handler, chamadas = _servidor_de_arquivo(httpx.Response(200, content=b"x", headers={"content-type": "text/plain"}))
+    dnit, http = _cliente(handler)
+    async with http:
+        await dnit.baixar_anexo("C", nome_arquivo="a.txt", id_arquivo="1")
+    assert dict(chamadas[0].url.params) == {"contrato": "C", "nome_arquivo": "a.txt"}
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_sem_identificacao_nao_chama_a_supra():
+    handler, chamadas = _servidor_de_arquivo(httpx.Response(200))
+    dnit, http = _cliente(handler)
+    async with http:
+        with pytest.raises(ValueError):
+            await dnit.baixar_anexo("C")
+    assert chamadas == []
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_imagem_em_json_base64():
+    corpo = {"status": True, "resultado": {"base64": base64.b64encode(PNG).decode(), "mime_type": "image/png"}}
+    handler, _ = _servidor_de_arquivo(httpx.Response(200, json=corpo))
+    dnit, http = _cliente(handler)
+    async with http:
+        arq = await dnit.baixar_anexo("C", nome_arquivo="foto.png")
+    assert (arq.conteudo, arq.mime_type) == (PNG, "image/png")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resposta, trecho", [
+    (httpx.Response(200, json={"status": False, "mensagem": "Arquivo não encontrado para este contrato (nome_arquivo).",
+                               "resultado": None}), "Arquivo não encontrado"),
+    (httpx.Response(200, content=b"", headers={"content-type": "application/pdf"}), "vazio"),
+    (httpx.Response(200, json={"status": True, "resultado": {}}), "sem o conteúdo"),
+])
+async def test_baixar_anexo_erros_claros(resposta, trecho):
+    handler, _ = _servidor_de_arquivo(resposta)
+    dnit, http = _cliente(handler)
+    async with http:
+        with pytest.raises(ArquivoInvalido, match=trecho):
+            await dnit.baixar_anexo("C", nome_arquivo="x")
+
+
+@pytest.mark.asyncio
+async def test_baixar_anexo_nome_utf8_no_content_disposition():
+    resp = httpx.Response(200, content=b"%PDF", headers={
+        "content-type": "application/pdf", "content-disposition": "attachment; filename*=UTF-8''Proj%C3%A9to.pdf",
+    })
+    handler, _ = _servidor_de_arquivo(resp)
+    dnit, http = _cliente(handler)
+    async with http:
+        arq = await dnit.baixar_anexo("C", nome_arquivo="x")
+    assert arq.nome == "Projéto.pdf"
