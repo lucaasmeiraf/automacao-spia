@@ -3,7 +3,7 @@ Testes do cliente SUPRA (`DnitClient`) com servidor simulado (httpx.MockTranspor
 
 Cobrem a proteção contra "502 Proxy Error" (limite de simultaneidade + nova tentativa em
 502/503/504) e, principalmente, que NADA mudou no que é enviado: URL, parâmetros (inclusive o
-typo `periodo_incio`), headers e o JSON devolvido.
+`periodo_inicio` — o antigo typo `periodo_incio` era ignorado pela SUPRA), headers e o JSON devolvido.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ async def test_requisicao_identica_a_de_antes():
     assert req.url.path.endswith("/cgcont/ai/relatorio/secao_ws/justificativa")
     assert dict(req.url.params) == {
         "contrato": "00 00493/2013",
-        "periodo_incio": "2025-10-01",   # typo intencional da API SUPRA
+        "periodo_inicio": "2025-10-01",  # NÃO é "periodo_incio": a SUPRA ignorava o typo (2026-10-01)
         "periodo_fim": "2025-10-31",
     }
     assert req.headers["token"] == "TOKEN-TESTE"

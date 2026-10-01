@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import date
 
 from app.models import TopicoResultado
 from app.processing.context import ProcessingContext
@@ -67,6 +69,40 @@ def _como_lista(resultado) -> list[dict]:
         r = resultado["resultado"]
         return r if isinstance(r, list) else [r]
     return [resultado]
+
+
+_PERIODO_RE = re.compile(r"Per[íi]odo:\s*(\d{1,2})/(\d{1,2})/(\d{4})", re.IGNORECASE)
+_DIA_RE = re.compile(r"Dia:\s*(\d{1,2})\s*,\s*ID Status:\s*(\d+)", re.IGNORECASE)
+
+
+def _expandir_registros_supra(registros: list[dict]) -> list[dict]:
+    """
+    Um registro por dia (`data` + `legenda`), como `_identificar_divergencias` espera.
+
+    Formato REAL da SUPRA (confirmado em 2026-10-01): um registro por MÊS, com os dias num texto:
+        {"resumo": "Período: 01/03/2026 | Dia: 1, ID Status: 1, Legenda: BOM | Dia: 2, ID Status: 2, ..."}
+    Antes desta função, nenhum dia era reconhecido (tudo "Não informado" → zero divergências sempre).
+    Registros já diários (`data`/`legenda`) passam como estão.
+    """
+    dias: list[dict] = []
+    for reg in registros:
+        if not isinstance(reg, dict):
+            continue
+        if reg.get("data"):
+            dias.append(reg)
+            continue
+        texto = str(reg.get("resumo") or "")
+        periodo = _PERIODO_RE.search(texto)
+        if not periodo:
+            continue
+        mes, ano = int(periodo.group(2)), int(periodo.group(3))
+        for dia, status in _DIA_RE.findall(texto):
+            try:
+                data = date(ano, mes, int(dia))
+            except ValueError:  # dia inexistente no mês (ex.: 31/04): ignora
+                continue
+            dias.append({"data": data.isoformat(), "legenda": int(status)})
+    return dias
 
 
 def _inferir_status_openmeteo(
@@ -172,7 +208,7 @@ async def processar_pluviometrico(
             ctx, contrato, periodo_inicio, periodo_fim
         )
 
-        registros_pluvi = _como_lista(bruto_pluvi)
+        registros_pluvi = _expandir_registros_supra(_como_lista(bruto_pluvi))
         registros_capa = _como_lista(bruto_capa)
         capa = registros_capa[0] if registros_capa else {}
 

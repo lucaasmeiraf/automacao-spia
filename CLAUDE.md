@@ -107,10 +107,12 @@ só os do código. Tópicos com handler próprio continuam sendo criados em cód
   configuração não repetem o valor recebido (`hide_input_in_errors`). Logue nomes de usuário sempre com `%r`
   e truncados (anti log-injection).
 
-### Typo intencional
+### Parâmetro do período (`periodo_inicio`)
 
-O parâmetro da query da API SUPRA é `periodo_incio` (sem "í"). **Não corrija**. É o parâmetro real da API.
-Está em `app/clients/dnit.py`.
+O parâmetro de início da API SUPRA é **`periodo_inicio`** (como na documentação da SUPRA). O n8n e as versões
+anteriores deste código mandavam `periodo_incio` (typo): a SUPRA **ignorava** o parâmetro e usava a data
+padrão antiga (2020-10-01), trazendo dados desde 2020. Corrigido em 2026-10-01, após comparação no servidor.
+Está em `app/clients/dnit.py`; `tests/test_dnit_client.py` impede a volta do typo.
 
 ### Cliente SUPRA
 

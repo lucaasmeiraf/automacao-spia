@@ -251,14 +251,15 @@ class DnitClient:
         """
         GET .../relatorio/secao_ws/<endpoint>
 
-        Atenção: o parâmetro de início chama-se `periodo_incio` (sem o segundo
-        "i"). Esse é o nome que a API do DNIT espera — mantido igual ao fluxo
-        original do n8n de propósito. NÃO "corrija" sem confirmar no servidor.
+        O parâmetro de início é `periodo_inicio` (documentação da SUPRA). O fluxo do n8n mandava
+        `periodo_incio` (typo): a SUPRA ignorava o parâmetro e usava a data padrão antiga (2020-10-01),
+        trazendo dados de 2020 até o fim do período. Confirmado no servidor em 2026-10-01 (ex.: diário de
+        obra de mar/2026 → 4 arquivos de 2020 com o typo; 8 arquivos do mês com o nome correto).
         """
         url = f"{self._base_url}/relatorio/secao_ws/{endpoint}"
         params = {
             "contrato": contrato,
-            "periodo_incio": periodo_inicio,  # typo intencional (contrato com a API)
+            "periodo_inicio": periodo_inicio,
             "periodo_fim": periodo_fim,
         }
         logger.info("DNIT GET secao_ws/%s (contrato=%s)", endpoint, contrato)

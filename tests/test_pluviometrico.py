@@ -116,3 +116,45 @@ def test_dados_openmeteo_vazios():
     assert resultado["total_dias_analisados"] == 0
     assert resultado["total_divergencias"] == 0
     assert resultado["resumo_diario"] == []
+
+
+# ---------------------------------------------------------------------------
+# _expandir_registros_supra — formato real da SUPRA (um registro por mês, dias num texto)
+# ---------------------------------------------------------------------------
+
+from app.processing.pluviometrico import _expandir_registros_supra  # noqa: E402
+
+RESUMO_REAL = (
+    "Período: 01/03/2026 | Dia: 1, ID Status: 1, Legenda: BOM | Dia: 2, ID Status: 1, Legenda: BOM | "
+    "Dia: 3, ID Status: 2, Legenda: CHUVOSO | Dia: 31, ID Status: 3, Legenda: IMPRATICÁVEL"
+)
+
+
+def test_expande_o_texto_mensal_em_dias():
+    dias = _expandir_registros_supra([{"id_contrato_obra": "795", "resumo": RESUMO_REAL}])
+    assert dias == [
+        {"data": "2026-03-01", "legenda": 1},
+        {"data": "2026-03-02", "legenda": 1},
+        {"data": "2026-03-03", "legenda": 2},
+        {"data": "2026-03-31", "legenda": 3},
+    ]
+
+
+def test_dia_inexistente_no_mes_e_ignorado():
+    dias = _expandir_registros_supra([{"resumo": "Período: 01/04/2026 | Dia: 30, ID Status: 1 | Dia: 31, ID Status: 1"}])
+    assert [d["data"] for d in dias] == ["2026-04-30"]
+
+
+def test_registros_ja_diarios_e_lixo():
+    diario = {"data": "2025-01-01T00:00:00", "legenda": 1}
+    assert _expandir_registros_supra([diario, {"resumo": "sem período"}, None]) == [diario]
+
+
+def test_formato_real_agora_gera_divergencia():
+    """Antes da correção, o formato real nunca gerava divergência (todos os dias 'Não informado')."""
+    dias = _expandir_registros_supra([{"resumo": RESUMO_REAL}])
+    openmeteo = _make_openmeteo(["2026-03-01", "2026-03-02"], [0.0, 5.0], [25.0, 25.0], [10.0, 10.0], [0, 0])
+    resultado = _identificar_divergencias(dias, openmeteo)
+    assert resultado["resumo_diario"][0]["status_supra"] == "Bom"
+    assert resultado["total_divergencias"] == 1  # dia 2: SUPRA "Bom" × chuva de 5 mm
+    assert resultado["divergencias"][0]["data"] == "2026-03-02"
