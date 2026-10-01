@@ -202,6 +202,118 @@ LEGENDAS=1 - Bom | 2 - Chuva | 3 - Impraticável | 5 - Instável | 4 - Não houv
 
 Veja `.env.example` para todos os campos disponíveis.
 
+### 3.7 Cruzamento de dados (2026-10-01)
+
+Vários tópicos só podem ser avaliados **comparando fontes**: texto × tabela, texto × anexo, um tópico ×
+outro, relatório × fonte externa. A regra do projeto é **"o código busca, o prompt julga"**:
+
+| Peça | Responsabilidade | Onde |
+|---|---|---|
+| Código (estratégia/handler) | **Trazer** todas as fontes do cruzamento e entregá-las à LLM em **blocos nomeados** | `app/topics.py` + `app/processing/<handler>.py` |
+| Prompt do tópico | **Declarar** quais blocos existem e **quais regras** de cruzamento aplicar | `prompts/<chave>.md` |
+
+A LLM só cruza o que recebe. Sem regra no prompt, ela vê os dados mas compara sem critério, e o resultado
+varia entre execuções. As duas peças são obrigatórias.
+
+**Contrato do prompt** (modelo: `prompts/resumo_projeto.md`). Todo tópico que cruza dados tem:
+1. **"Conteúdo recebido"**: lista cada bloco pelo nome exato que o código usa (ex.: `ANEXOS`) e diz o que
+   significa a ausência do bloco ("sem bloco de anexos = nenhum anexo fornecido");
+2. **Regras de uso das fontes**: ex.: "remissão a anexo": se o texto só remete ao anexo e o anexo não veio,
+   o grupo é Parcial; se veio, avaliar pelo anexo;
+3. **"Coerência"**: as comparações concretas (ex.: extensão × km final − km inicial com tolerância de 0,5 km;
+   revestimento do pavimento × faixa granulométrica da dosagem) e a gravidade de cada divergência
+   (grave → Não Conforme; relevante → Atenção).
+
+**Cruzamentos que existem hoje (todos dentro de um mesmo tópico):**
+
+| Tipo | Como funciona | Tópicos |
+|---|---|---|
+| Texto × tabelas da própria seção | A seção chega inteira; o prompt define as comparações | Todos |
+| Texto × anexo do registro | Estratégia `campo_anexos`: download por `id_arquivo` + ETL → bloco `ANEXOS` (§4) | `resumo_projeto` |
+| SUPRA × fonte externa, **cruzado pelo código** | `pluviometrico.py` busca `capa` + `controle_pluviometrico`, geocodifica (Nominatim), consulta Open-Meteo e **compara dia a dia no Python** (`_identificar_divergencias`); a LLM recebe só as divergências calculadas e redige o parecer | `controle_pluviometrico` |
+
+Quando a comparação é exata (datas, números, contagens), o melhor é o **código** calcular, como no
+pluviométrico: é determinístico, barato e não depende da LLM. A LLM fica com o que exige interpretação
+(texto livre, tabelas heterogêneas, planilhas com layouts diferentes).
+
+**O que ainda não existe:** cruzamento **entre tópicos** (ex.: Resumo do Projeto × OAEs; Informações
+Contratuais × Termos Aditivos) e com **Demais Anexos**. Hoje cada tópico roda isolado
+(`asyncio.gather`, sem compartilhar dados).
+
+**Proposta (a implementar após alinhamento):** fontes declaradas por tópico.
+- `TopicConfig` ganha uma lista de **fontes extras**, por exemplo: outra seção (`secao: "oaes"`, com
+  `campos_manter`), anexos do registro (o que `campo_anexos` já faz) e Demais Anexos filtrados (por
+  `tipo_arquivo`/nome).
+- Um handler genérico busca a seção principal + as fontes declaradas e monta a mensagem em blocos com
+  cabeçalho fixo (`SEÇÃO`, `DADOS DE <TÓPICO>`, `ANEXOS`), sempre na mesma ordem; o `infos` guarda tudo.
+- **Cache por execução:** a mesma seção pedida por dois tópicos é buscada uma vez só na SUPRA (que derruba
+  rajadas de chamadas).
+- O prompt de cada tópico segue o contrato acima, citando os blocos que a configuração declara.
+- Comparações exatas recorrentes viram funções no código (como no pluviométrico), com o resultado entregue
+  como mais um bloco.
+
+#### Mapa de vínculos (definido pelo Lucas em 2026-10-01) e onde buscar cada fonte
+
+Legenda: **[T]** outro tópico · **[A]** anexo (item 32.x do relatório) · **[S]** sistema externo.
+Fontes verificadas na SUPRA em 2026-10-01 (contrato `00 00493/2013`); "grupo" = grupo do `arquivos_ws`
+(por mês `yyyy-MM`); "seção" = `secao_ws/<slug>` (com `id_arquivo`/`nome_arquivo` quando indicado).
+
+| Tópico | Vínculos | Fonte na SUPRA | Situação |
+|---|---|---|---|
+| 03 Resumo do Projeto | [A] 32.1 Pav. novo, 32.2 Pav. existente | seção `resumo_projeto` (`id_arquivo`) | ✅ implementado (falta 1 linha por item) |
+| 04 RPFO | [S] CIB · [A] 32.3 RPFO | grupo `rpfo_gestao` (xlsx) | ⏳ |
+| 06 Histórico | [S] CIB | — | ⛔ CIB em construção |
+| 08.1.1/08.1.2/08.1.5 Supervisora (contrato, aditivos, apostilas) | [S] SIAC | — | ⛔ API do SIAC solicitada (aguardando) |
+| 08.1.3 Resp. técnicos supervisora | [A] 32.14 ART vigentes | não encontrado no 493 | ❓ confirmar grupo |
+| 08.1.4 Localização | [S] SUPRA | seção `capa` | ✅ já é SUPRA |
+| 10 Atividades supervisora | [T] 29 | seção `gestao_tratativas` | ⏳ |
+| 11.1.x Construtora (contrato, aditivos, apostilas) | [S] SIAC | — | ⛔ API do SIAC solicitada (aguardando) |
+| 12 Mobilização construtora | [A] 32.17 Diário de obra | seção `diario_obra` (`id_arquivo`) / grupo "Diário de Obra" | ⚠️ PDF escaneado |
+| 13 Atividades construtora | [A] 32.17 · [T] 17, 29 | idem + seções dos tópicos | ⚠️ PDF escaneado |
+| 14/15/16 Financeiro, avanço físico, avanço de OAE | [T] 17 | seção `analise_critica_cronogramas` | ⏳ (endpoints 14–16 a confirmar) |
+| 17 Análise crítica dos cronogramas | [A] 32.4.x · [T] 13–16, 29 | 32.4 não encontrado no 493 | ❓ confirmar grupo |
+| 18 Controle pluviométrico | [A] 32.17 Diário de obra | seção `diario_obra` | ⚠️ PDF escaneado (cruzamento com Open-Meteo corrigido em 2026-10-01) |
+| 19 Documentação fotográfica | [S] SUPRA | seção `documentacao_fotografica` | ✅ já é SUPRA |
+| 20 Monitoramento ambiental | [A] 32.5, 32.6 PBA/PBAI, 32.7 Licenças | grupos "Componente Ambiental", "PBA / PBAI", "Licenças Ambientais"; seção `resumo_monitoramento_ambiental` (`nome_arquivo`) | ⏳ (PDFs com texto) |
+| 21/22 Ensaios construtora/supervisora | [A] 32.8 / 32.9 | seções `ensaios_construcao`/`ensaios_supervisao` (`nome_arquivo`) | ⏳ (PDFs com texto) |
+| 23 PVEGQ | [A] 32.10 | grupo "PVEGQ" | ⏳ |
+| 24 RNC | [A] 32.11 | grupo "RNC" | ⏳ |
+| 25 Jurídico, garantias e seguros | [S] SIAC · [A] 32.12, 32.12.1 | grupos "Garantias e Seguros", "Gestao Juridica" | ⏳ (SIAC ⛔) |
+| 27 Diário de obra | [A] 32.17 | seção `diario_obra` | ⚠️ PDF escaneado |
+| 28 Atas e correspondências | [A] 32.13 | seção `atas_correspondencias` (`id_arquivo`) | ⏳ (há PDFs escaneados) |
+| 29 Gestão de tratativas | [T] 10, 13, 17 | seções dos tópicos | ⏳ |
+| 30 Conclusão e comentários | todos | resultados dos demais tópicos | ⏳ (2ª etapa) |
+| Sem vínculo | 01, 02, 03.3, 05, 07, 09, 26, 31 | — | — |
+
+Apoio sem vínculo fixo: 32.15 Quadro de fiscais (não encontrado no 493) e 32.18 Demais anexos (seção
+`demais_anexos`, grupo "Anexos").
+
+**Decisões de desenho decorrentes do mapa:**
+- **[T] cruza com os DADOS da seção do outro tópico** (cache por execução), não com o parecer da IA. Assim
+  não há ordem de execução nem ciclo (17 ↔ 29 se referenciam).
+- **30 Conclusão** roda numa 2ª etapa, depois dos demais, e recebe os **pareceres** já gerados (seria
+  inviável mandar os dados de todos os tópicos).
+- **[S] indisponível** (CIB em construção; SIAC com acesso via API solicitado pelo Lucas, sem retorno até
+  2026-10-01): o tópico roda sem a fonte e o bloco informa "não verificado – <sistema> indisponível"; o
+  prompt instrui a não penalizar por isso. Cada sistema externo será uma fonte configurável (chave/URL no
+  `.env`): quando o acesso ao SIAC sair, basta configurar e o cruzamento passa a valer.
+- **Diário de Obra (32.17) é PDF escaneado** (formulário RDO impresso, 1 página por dia: data, tempo e
+  condição manhã/tarde, pessoal, equipamentos, serviços; ~8 PDFs × 8 páginas/mês).
+  **Decisão (Lucas, 2026-10-01):** por enquanto **não** há extração por imagem (nem visão, nem OCR). PDF sem
+  texto extraível entra no bloco do anexo como "não foi possível analisar o Diário de Obras deste registro"
+  e o parecer informa isso, até o Diário de Obras ser padronizado como PDF com texto (OCR na origem).
+  Alternativa registrada para o futuro: modelo de visão extraindo o RDO para JSON por dia, guardado por
+  `id_arquivo` e reaproveitado pelos tópicos 12, 13, 18 e 27 (cruzamento 18 × 32.17 feito pelo código).
+
+**Avaliação de tool calling / MCP (a LLM recebe funções como `buscar_secao`, `ler_anexo` e decide o que
+chamar):** não adotado como base. (1) Auditoria precisa ser previsível: a LLM pode não buscar um dado e
+aprovar sem conferir, sem que o analista perceba; (2) cada chamada de função é mais uma ida e volta com o
+histórico reenviado, o que multiplica os tokens e agrava o limite de TPM (§10 do documento técnico);
+(3) o formato de tool calling difere entre OpenAI, Anthropic e Google, o que atrapalha o roteamento de
+modelos; (4) o `infos` deixa de mostrar, num só lugar, o que a IA viu. **Uso pontual aceitável:** escolher
+quais arquivos ler em Demais Anexos (centenas de arquivos, impossível mandar todos), num passo separado e
+registrado, antes da análise.
+
 ---
 
 ## 4. Endpoints SUPRA utilizados
@@ -210,7 +322,8 @@ Base URL: `https://supra.dnit.gov.br/index_cgcont_common.php/cgcont/ai/relatorio
 
 Todos os endpoints GET usam os parâmetros de query:
 - `contrato`
-- `periodo_incio` (**atenção: typo original, sem acento, mantido por compatibilidade**)
+- `periodo_inicio` (corrigido em 2026-10-01: o n8n mandava `periodo_incio`, que a SUPRA **ignorava** e
+  substituía pela data padrão 2020-10-01 — os tópicos recebiam dados de 2020 até o fim do período)
 - `periodo_fim`
 
 E o header: `token: <JWT>`
@@ -268,9 +381,16 @@ têm anexo. Cada item é um registro da tabela com o seu `id_arquivo` (Novo + Ex
 | `arquivo/arquivos_ws` | ⚠️ | grupo "Resumo do Projeto" com `nome_arquivo_storage`, mas só no **mês em que o arquivo foi publicado** e sem `id_arquivo` |
 | `secao_ws/demais_anexos` | ❌ | tem `id_arquivo` + `nome_arquivo`, acumulado até `periodo_fim`, mas só tipos "Outros"/"Planilha de Equilíbrio" — anexos de roteiro não aparecem |
 
-**Pedido à equipe da SUPRA (feito pelo Lucas em 2026-09-30, aguardando):** (1) `resumo_projeto` passa a
-devolver `id_arquivo` em cada registro; (2) `download_ws` passa a aceitar `id_arquivo` como alternativa a
-`nome_arquivo`. Nome do parâmetro assumido: **`id_arquivo`** — confirmar quando publicarem.
+**Pedido à equipe da SUPRA (feito pelo Lucas em 2026-09-30) — ✅ publicado e testado em 2026-10-01:**
+(1) `resumo_projeto` devolve `id_arquivo` em cada registro; (2) `download_ws` aceita `id_arquivo` como
+alternativa a `nome_arquivo` (parâmetro **`id_arquivo`**, confirmado). Teste no contrato `00 00493/2013`
+(out/2025): `id_arquivo=573969` → "Projeto Pavimento 493.xlsx" (35 KB) → ETL 13.127 caracteres →
+mensagem à LLM com bloco `ANEXOS` (~29 mil caracteres, ~7,3 mil tokens), sem nenhuma mudança de código.
+
+**Pendente (2026-10-01):** a seção devolveu **1 registro só** (`r = 1`), embora o contrato tenha dois anexos
+no grupo "Resumo do Projeto" do `arquivos_ws` (Pavimento Novo, 2025-03, `descricao` "1"; Pista Existente,
+2024-02, `descricao` "2"). Indício de que a query mantém só a linha mais recente (`r = 1`); se o contrato
+tiver os dois itens, a SUPRA precisa devolver uma linha por item. Verificar com a equipe da SUPRA.
 
 **Desenho (estratégia `campo_anexos`, `app/processing/campo_anexos.py`):**
 1. `buscar_secao` → registros. Texto = `campo_conteudo` de cada registro, sem HTML, sem repetir textos iguais.
@@ -378,7 +498,7 @@ Análise de conformidade pluviométrica
 | Tópico | Estratégia | Modelo | Status |
 |---|---|---|---|
 | `justificativa` | campo | gpt-4o-mini | ✅ |
-| `resumo_projeto` | campo_anexos (texto + ETL xlsx/pdf dos anexos) | gpt-4o-mini | ✅ texto · ⏳ anexos aguardam a SUPRA (`id_arquivo`) |
+| `resumo_projeto` | campo_anexos (texto + ETL xlsx/pdf dos anexos) | gpt-4o-mini | ✅ texto + anexo (testado com a SUPRA em 2026-10-01) · ⏳ 2º item (Pav. Existente) |
 | `historico` | campo | gpt-4o-mini | ✅ |
 | `introducao` | campo | gpt-4o-mini | ✅ |
 | `oaes` | json + campos_manter | gpt-4o-mini | ✅ |
@@ -427,9 +547,15 @@ Análise de conformidade pluviométrica
     `DNIT_RETRY_ESPERA=2`) e detecção de travamento por `DNIT_TIMEOUT=20` s sem dados; esgotado, vira
     `SupraIndisponivel` com mensagem clara. Os avisos `SUPRA …: nova tentativa` nos logs medem a frequência.
   - *Critério de fechamento:* causa identificada e taxa de quedas medida ≈ 0 (ou acordo com a equipe da SUPRA).
-- [ ] **Anexos do Resumo do Projeto** — código pronto (estratégia `campo_anexos`, 2026-09-30); aguarda a
-  SUPRA devolver `id_arquivo` em `resumo_projeto` e aceitar `id_arquivo` no `download_ws`. Ao publicarem:
-  confirmar o nome do parâmetro, rodar dry-run do contrato `00 00493/2013` e conferir o bloco `ANEXOS`.
+- [x] ~~Anexos do Resumo do Projeto por `id_arquivo`~~ — SUPRA publicou; testado ponta a ponta em 2026-10-01
+- [ ] Resumo do Projeto devolve só 1 registro (`r = 1`): confirmar com a SUPRA se deve vir 1 linha por item
+  (Pavimento Novo + Existente) — no 493/2013 há dois anexos no grupo do resumo
+- [ ] Execução real (com a OpenAI) do Resumo do Projeto com anexo, para avaliar a qualidade do parecer
+- [x] ~~Período ignorado pela SUPRA (`periodo_incio`)~~ — corrigido para `periodo_inicio` em 2026-10-01
+- [x] ~~Controle pluviométrico nunca achava divergências~~ — a SUPRA manda 1 registro por mês com os dias em
+  texto; `_expandir_registros_supra` lê esse formato (2026-10-01). Teste real mar/2026: 31 dias, 18 divergências
+- [ ] Calibrar a regra do pluviométrico herdada do n8n (`_inferir_status_openmeteo`): 0,1 mm já vira "Instável"
+  e 1 mm vira "Chuva" — gera muitas divergências (18 em 31 dias no teste real)
 - [ ] OCR para anexos PDF digitalizados (hoje viram "sem texto extraível"; ex.: termos aditivos do 493/2013)
 - [ ] Ler anexos `.docx` e `.xls` antigos (hoje "formato não suportado")
 - [ ] Validar o valor de `conforme` (`Conforme` / `Atenção` / `Não Conforme`) no resultado
@@ -443,7 +569,10 @@ Análise de conformidade pluviométrica
 
 ## 9. Observações Técnicas
 
-- O parâmetro `periodo_incio` (sem "í") é um **typo existente na API SUPRA** e deve ser mantido exatamente assim — ver `app/clients/dnit.py`
+- **Período (2026-10-01):** o parâmetro correto é `periodo_inicio`. O typo `periodo_incio`, herdado do n8n,
+  era ignorado pela SUPRA (data padrão 2020-10-01). Comparação no contrato `00 00493/2013`, mar/2026, typo ×
+  correto: `diario_obra` 4 arquivos de 2020 × 8 do mês; `historico` 56 × 1; `demais_anexos` 649 × 2;
+  `controle_pluviometrico` 56 meses × 1; `justificativa` igual (a query não depende do início)
 - Tokens JWT e chaves de API **nunca devem ser commitados** — usar `.env` (adicionado ao `.gitignore`)
 - Para imagens (Mapa de Situação, Diagrama de Ocorrências), o modelo usado é `gpt-4o` com suporte a visão — custo significativamente maior que `gpt-4o-mini`
 - O `ProcessingContext` é criado por requisição (`ProcessingContext.da_app(app.state)`, no webhook e no `/api/executar`), agrupa todos os clientes HTTP e é passado para `processar_topico()`
