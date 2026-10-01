@@ -7,7 +7,14 @@ nó "Separa Prompts".
 """
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+import re
+from datetime import date
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# A SUPRA só aceita Y-m-d. O campo de data do navegador aceita anos com 5+ dígitos ("20226-07-01"), que a
+# SUPRA recusa com status false — e a recusa chegava à LLM como seção vazia (2026-10-01).
+_DATA_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class PromptItem(BaseModel):
@@ -29,6 +36,23 @@ class RelatorioRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("campo obrigatório não pode ser vazio")
         return v.strip()
+
+    @field_validator("periodo_inicio", "periodo_fim")
+    @classmethod
+    def _data_valida(cls, v: str) -> str:
+        try:
+            if not _DATA_RE.match(v):
+                raise ValueError
+            date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("data inválida: use o formato AAAA-MM-DD (ex.: 2026-07-01)") from None
+        return v
+
+    @model_validator(mode="after")
+    def _inicio_antes_do_fim(self) -> RelatorioRequest:
+        if self.periodo_inicio > self.periodo_fim:  # AAAA-MM-DD: ordem de texto = ordem de data
+            raise ValueError("periodo_inicio deve ser anterior ou igual a periodo_fim")
+        return self
 
     def prompts_ativos(self) -> dict[str, str]:
         """

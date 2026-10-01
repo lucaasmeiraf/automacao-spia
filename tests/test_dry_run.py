@@ -104,7 +104,7 @@ async def test_executar_somente_ignora_yaml(tmp_path):
     dnit.buscar_secao = AsyncMock(return_value=[{"resumo": "x"}])
     ctx = ProcessingContext(dnit=dnit, openai=MagicMock(), openmeteo=MagicMock(), nominatim=MagicMock())
     req = RelatorioRequest(
-        contrato="c", periodo_inicio="a", periodo_fim="b",
+        contrato="c", periodo_inicio="2025-10-01", periodo_fim="2025-10-31",
         prompts=[{"topico": "historico", "conteudo": "P"}, {"topico": "introducao", "conteudo": "P"}],
     )
     resposta = await executar_relatorio(req, ctx, settings, somente=frozenset({"historico"}), dry_run=True)
